@@ -15,6 +15,7 @@
 #include <icons.h>
 #include <utils.h>
 #include <entities/MeteoData.h>
+#include <entities/UiState.h>
 
 volatile unsigned long cps = 0L;
 MovingAverage<volatile unsigned long, CYCLE_SIZE> cpm;
@@ -24,6 +25,12 @@ struct tm timeinfo;
 
 Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 Adafruit_BME280 bme;
+
+UiState uiState = UiState::MAIN; 
+
+uint8_t menuItemsCounter = 0;
+uint8_t selectedMenuItem = 0;
+char** menuItems;
 
 /**
  * Method signatures;
@@ -41,9 +48,15 @@ void webServer(void * parameter);
 
 // ui methods
 void drawHeader(void);
+void drawMainScreen(void);
+void drawMenuScreen(void);
+void drawWifiMenuScreen(void);
+void drawEnableWifiScreen(void);
+
 void showMainScreen(void);
 void showMenuScreen(void);
-
+void showWifiScren(void);
+void showEnableWifiScreen(void);
 
 void setup() {
   Serial.begin(UART_BAUNDRATE);
@@ -89,7 +102,93 @@ void setup() {
   }
 }
 
-void loop() { }
+void showMainScreen() {
+  uiState = UiState::MAIN;
+  //delete[] menuItems; // NPE
+  selectedMenuItem = 0;
+  menuItemsCounter = 0;
+}
+
+void showMenuScreen() {
+  uiState = UiState::MENU;
+  delete[] menuItems;
+  menuItems = new char*[4] {" <- back"," Wifi", " Geiger", " Co2"};
+  selectedMenuItem = 0;
+  menuItemsCounter = 4;
+}
+
+void showWifiScren() {
+  uiState = UiState::WIFI;
+  delete[] menuItems;
+  menuItems = new char*[4] {" <- back"," on/off", " Connect", " Scanner"};
+  selectedMenuItem = 0;
+  menuItemsCounter = 4;
+}
+
+void showEnableWifiScreen() {
+  uiState = UiState::WIFI_ENABLE;
+  delete[] menuItems;
+  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
+  menuItemsCounter = 3;
+  selectedMenuItem = 1;
+}
+
+void loop() {
+  if (Serial.available()) {
+    byte data = Serial.read();
+    if ((data != 'o') && (uiState.hasMenu())) {
+      if (data - '0' < menuItemsCounter) selectedMenuItem = data - '0';
+    }
+    if (data == 'o') {
+      switch (uiState) {
+        case UiState::MENU: {
+          switch (selectedMenuItem) {
+            case 0:
+              showMainScreen();
+              break;
+            case 1:
+              showWifiScren();
+            default:
+              break;
+          }
+          break;
+        }
+        case UiState::MAIN: {
+          showMenuScreen();
+          break;
+        }
+        case UiState::WIFI: {
+          switch (selectedMenuItem) {
+            case 0:
+              showMenuScreen();
+              break;
+            case 1: 
+              showEnableWifiScreen();
+              break;
+            default:
+              break;
+          }
+          break;
+        }
+        case UiState::WIFI_ENABLE: {
+          showWifiScren();
+          switch (selectedMenuItem) {
+            case 1:
+              break;
+            case 2:
+              // TODO add anything)
+              break;
+            default:
+              break;
+          }
+          break;
+        }
+      }
+      delay(50);
+      oled.fillRect(0, 18, 128, 128, BLACK);
+    }
+  }
+ }
 
 void drawHeader() {
   oled.setTextSize(1);
@@ -113,11 +212,64 @@ void drawHeader() {
   oled.drawLine(0, 17, 128, 17, WHITE);
 }
 
-void showMenuScreen() {
+void drawEnableWifiScreen() {
   drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  oled.println("[ Enable WiFi? ]");
+  oled.println();
+  for(uint8_t i = 0; i < menuItemsCounter; i++) {
+    if (i == selectedMenuItem) {
+      oled.print("[*]");
+    } else { 
+      oled.print("[ ]");
+    }
+    oled.println(menuItems[i]);
+  }
 }
 
-void showMainScreen() {
+void drawWifiMenuScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  oled.println("[ WiFi ]");
+  oled.println();
+  for(uint8_t i = 0; i < menuItemsCounter; i++) {
+    if (i == selectedMenuItem) {
+      oled.print("[*]");
+    } else { 
+      oled.print("[ ]");
+    }
+    oled.println(menuItems[i]);
+  }
+}
+
+void drawMenuScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  oled.println("[ main menu ]");
+  oled.println();
+  for(uint8_t i = 0; i < menuItemsCounter; i++) {
+    if (i == selectedMenuItem) {
+      oled.print("[*]");
+    } else { 
+      oled.print("[ ]");
+    }
+    oled.println(menuItems[i]);
+  }
+}
+
+void drawMainScreen() {
   drawHeader();
 
   oled.setTextSize(2);
@@ -183,8 +335,27 @@ void ui(void * parameters) {
   vTaskDelay(2000 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
-  for(;;){
-    showMainScreen();
+  for(;;) {
+    switch (uiState) {
+      case UiState::MAIN:
+        drawMainScreen();
+        break;
+
+      case UiState::MENU:
+        drawMenuScreen();
+        break;
+
+      case UiState::WIFI: 
+        drawWifiMenuScreen();
+        break;
+
+      case UiState::WIFI_ENABLE:
+        drawEnableWifiScreen();
+        break;
+
+      default:
+        break;
+    }
     vTaskDelay(32 / portTICK_PERIOD_MS);
   }
 }
@@ -217,7 +388,7 @@ void webServer(void * parameter) {
 */
 void getSensorsData(void * parameter) {
   
-  if (!bme.begin()) {
+  if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
       oled.println("BME280 error :(");
   } else {
       oled.println("BME280 ok");

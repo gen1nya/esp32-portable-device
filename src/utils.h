@@ -10,7 +10,7 @@ inline int bytes2int(byte h, byte l){
 	return (256 * high) + low;
 }
 
-void writeStringToEEPROM(const String data, uint16_t address) {
+void writeStringToEEPROM(const String &data, uint16_t address) {
 	EEPROM.write(address, (byte) data.length());
   	EEPROM.writeString(address + 1, data);
 }

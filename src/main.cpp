@@ -33,6 +33,8 @@ uint8_t menuItemsCounter = 0;
 uint8_t selectedMenuItem = 0;
 char** menuItems;
 
+bool co2Enabled = false;
+
 /**
  * Method signatures;
  * */
@@ -52,15 +54,20 @@ void webServer(void * parameter);
 
 // ui methods
 void drawHeader(void);
+void drawMenu(char title[]);
 void drawMainScreen(void);
 void drawMenuScreen(void);
 void drawWifiMenuScreen(void);
 void drawEnableWifiScreen(void);
+void drawCo2Scren(void);
+void drawEnableCo2Scren(void);
 
 void showMainScreen(void);
 void showMenuScreen(void);
 void showWifiScren(void);
 void showEnableWifiScreen(void);
+void showCo2Scren(void);
+void showEnableCo2Scren(void);
 
 void setup() {
   Serial.begin(UART_BAUNDRATE);
@@ -87,12 +94,16 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  co2Enabled = EEPROM.readBool(EEPROM_ADDRESS_CO2_ENABLED);
+  
   uint8_t i = 0;
   while (WiFi.status() != WL_CONNECTED && i < WIFI_CONNECTION_TIMEOUT) {
     delay(1000);
     i++;
     oled.print(".");
   }
+
+  oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
 
   if (WiFi.status() != WL_CONNECTED) {
     oled.setTextColor(RED);
@@ -148,6 +159,22 @@ void showEnableWifiScreen() {
   menuItems = new char*[3] {" <- back"," Enable", " Disable"};
   menuItemsCounter = 3;
   selectedMenuItem = 1;
+}
+
+void showCo2Scren() {
+  uiState = UiState::CO2;
+  delete[] menuItems;
+  menuItems = new char*[2] {" <- back"," on/off"};
+  selectedMenuItem = 0;
+  menuItemsCounter = 2;
+}
+
+void showEnableCo2Scren() {
+  uiState = UiState::CO2_ENABLE;
+  delete[] menuItems;
+  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
+  menuItemsCounter = 3;
+  selectedMenuItem = co2Enabled ? 2 : 1;
 }
 
 void loop() { }
@@ -212,14 +239,28 @@ void drawWifiMenuScreen() {
   }
 }
 
-void drawMenuScreen() {
+void drawCo2Scren() {
   drawHeader();
-
+  
   oled.setCursor(0, 19);
   oled.setTextColor(GREEN, BLACK);
   oled.setTextSize(1);
+  
+  drawMenu("[ CO2 ]");
+}
 
-  oled.println("[ main menu ]");
+void drawEnableCo2Scren() {
+  drawHeader();
+  
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+  
+  drawMenu("[ enable CO2? ]");
+}
+
+void drawMenu(char title[]) {
+  oled.println(title);
   oled.println();
   for(uint8_t i = 0; i < menuItemsCounter; i++) {
     if (i == selectedMenuItem) {
@@ -229,6 +270,16 @@ void drawMenuScreen() {
     }
     oled.println(menuItems[i]);
   }
+}
+
+void drawMenuScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ main menu ]");
 }
 
 void drawMainScreen() {
@@ -301,6 +352,7 @@ void ui(void * parameters) {
     if (prevUiState != uiState) {
       oled.fillRect(0, 18, 128, 128, BLACK);
       prevUiState = uiState;
+      EEPROM.commit(); // TODO fix it
     }
     switch (uiState) {
       case UiState::MAIN:
@@ -317,6 +369,14 @@ void ui(void * parameters) {
 
       case UiState::WIFI_ENABLE:
         drawEnableWifiScreen();
+        break;
+
+      case UiState::CO2:
+        drawCo2Scren();
+        break;
+
+      case UiState::CO2_ENABLE:
+        drawEnableCo2Scren();
         break;
 
       default:
@@ -365,7 +425,8 @@ void getSensorsData(void * parameter) {
     data.humidity = bme.readHumidity();
     data.preassure = (int) (bme.readPressure() / 133.333);
     data.temperature = bme.readTemperature();
-    data.co2 = co2ppm();
+    
+    data.co2 = co2Enabled ? co2ppm() : 0; 
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
@@ -398,6 +459,10 @@ void IRAM_ATTR buttonOkIsr() {
           break;
         case 1:
           showWifiScren();
+        case 2: 
+          break;
+        case 3: 
+          showCo2Scren();
         default:
           break;
       }
@@ -433,6 +498,33 @@ void IRAM_ATTR buttonOkIsr() {
       }
       break;
     }
+    case UiState::CO2: {
+      switch (selectedMenuItem) {
+      case 0:
+        showMenuScreen();
+        break;
+      case 1: 
+        showEnableCo2Scren();
+        break;
+      }
+      break;
+    }
+    case UiState::CO2_ENABLE: {
+      switch (selectedMenuItem) {
+        case 1:
+          EEPROM.writeBool(EEPROM_ADDRESS_CO2_ENABLED, true);
+          co2Enabled = true;
+          break;
+        case 2:
+          EEPROM.writeBool(EEPROM_ADDRESS_CO2_ENABLED, false);
+          co2Enabled = false;
+          break;
+        default:
+          break;
+      }
+      showCo2Scren();
+      break;
+    }
   }
   lastButtonInterrupt = millis();
 }
@@ -440,14 +532,14 @@ void IRAM_ATTR buttonOkIsr() {
 void IRAM_ATTR buttonUpIsr() {
   if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
   if (uiState.hasMenu()) {
-    if (selectedMenuItem < menuItemsCounter ) selectedMenuItem++;
+    if (selectedMenuItem < menuItemsCounter - 1) selectedMenuItem++;
   }
   lastButtonInterrupt = millis();
 }
 
 void IRAM_ATTR buttonDownIsr() {
   if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
-  if (selectedMenuItem >= 0 ) selectedMenuItem--;
+  if (selectedMenuItem > 0 ) selectedMenuItem--;
   lastButtonInterrupt = millis();  
 }
 

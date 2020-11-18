@@ -1,8 +1,6 @@
 #ifndef _UISTATE_H
 #define _UISTATE_H
 
-static const char* mainMenu[] {" <- back"," Wifi", " Geiger", " Co2"};
-
 class UiState {
     
     public:

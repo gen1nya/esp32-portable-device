@@ -5,6 +5,7 @@
 #include <libraries/CircularBuffer.h>
 #include <libraries/MovingAverage.h>
 
+#include <EEPROM.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <SPI.h>
@@ -27,7 +28,7 @@ Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_P
 Adafruit_BME280 bme;
 
 UiState uiState = UiState::MAIN; 
-
+UiState prevUiState = UiState::MAIN; // for ui state changes detecting
 uint8_t menuItemsCounter = 0;
 uint8_t selectedMenuItem = 0;
 char** menuItems;
@@ -39,6 +40,9 @@ int co2ppm(void);
 
 // interrupts
 void geigerCounterIsr(void);
+void buttonOkIsr(void);
+void buttonUpIsr(void);
+void buttonDownIsr(void);
 
 // RTOS tasks
 void cpsUpdater(void * parameter);
@@ -62,9 +66,16 @@ void setup() {
   Serial.begin(UART_BAUNDRATE);
   Serial2.begin(Z19B_UART_BAUNDRATE);
   Serial.println("init");
+  EEPROM.begin(EEPROM_INITIAL_SIZE);
   
   pinMode(PIN_GEIGER_COUNTER, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
+  attachInterrupt(PIN_BUTTON_OK, buttonOkIsr, FALLING);
+  attachInterrupt(PIN_BUTTON_UP, buttonUpIsr, FALLING);
+  attachInterrupt(PIN_BUTTON_DOWN, buttonDownIsr, FALLING);
 
   oled.begin();
   oled.fillScreen(BLACK);
@@ -100,6 +111,12 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     xTaskCreate(webServer, "webServer", 3000, NULL, 1, NULL);
   }
+
+  /** writeStringToEEPROM("asdfghjk", 50);
+  int length = EEPROM.read(50);
+  Serial.printf("eeprom string length %d \n", length)
+  Serial.print("read from eeprom: ");
+  Serial.println(readStringFromEEPROM(50)); */
 }
 
 void showMainScreen() {
@@ -133,62 +150,7 @@ void showEnableWifiScreen() {
   selectedMenuItem = 1;
 }
 
-void loop() {
-  if (Serial.available()) {
-    byte data = Serial.read();
-    if ((data != 'o') && (uiState.hasMenu())) {
-      if (data - '0' < menuItemsCounter) selectedMenuItem = data - '0';
-    }
-    if (data == 'o') {
-      switch (uiState) {
-        case UiState::MENU: {
-          switch (selectedMenuItem) {
-            case 0:
-              showMainScreen();
-              break;
-            case 1:
-              showWifiScren();
-            default:
-              break;
-          }
-          break;
-        }
-        case UiState::MAIN: {
-          showMenuScreen();
-          break;
-        }
-        case UiState::WIFI: {
-          switch (selectedMenuItem) {
-            case 0:
-              showMenuScreen();
-              break;
-            case 1: 
-              showEnableWifiScreen();
-              break;
-            default:
-              break;
-          }
-          break;
-        }
-        case UiState::WIFI_ENABLE: {
-          showWifiScren();
-          switch (selectedMenuItem) {
-            case 1:
-              break;
-            case 2:
-              // TODO add anything)
-              break;
-            default:
-              break;
-          }
-          break;
-        }
-      }
-      delay(50);
-      oled.fillRect(0, 18, 128, 128, BLACK);
-    }
-  }
- }
+void loop() { }
 
 void drawHeader() {
   oled.setTextSize(1);
@@ -336,6 +298,10 @@ void ui(void * parameters) {
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
   for(;;) {
+    if (prevUiState != uiState) {
+      oled.fillRect(0, 18, 128, 128, BLACK);
+      prevUiState = uiState;
+    }
     switch (uiState) {
       case UiState::MAIN:
         drawMainScreen();
@@ -419,16 +385,82 @@ void cpsUpdater(void * parameter){
   }
 }
 
-#define DEBOUNCE 500L
-unsigned long last_tube_interrupt = 0;
+unsigned long lastButtonInterrupt = 0;
+
+void IRAM_ATTR buttonOkIsr() {
+  if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
+  prevUiState = uiState;
+  switch (uiState) {
+    case UiState::MENU: {
+      switch (selectedMenuItem) {
+        case 0:
+          showMainScreen();
+          break;
+        case 1:
+          showWifiScren();
+        default:
+          break;
+      }
+      break;
+    }
+    case UiState::MAIN: {
+      showMenuScreen();
+      break;
+    }
+    case UiState::WIFI: {
+      switch (selectedMenuItem) {
+        case 0:
+          showMenuScreen();
+          break;
+        case 1: 
+          showEnableWifiScreen();
+          break;
+        default:
+          break;
+      }
+      break;
+    }
+    case UiState::WIFI_ENABLE: {
+      showWifiScren();
+      switch (selectedMenuItem) {
+        case 1:
+          break;
+        case 2:
+          // TODO add anything)
+          break;
+        default:
+          break;
+      }
+      break;
+    }
+  }
+  lastButtonInterrupt = millis();
+}
+
+void IRAM_ATTR buttonUpIsr() {
+  if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
+  if (uiState.hasMenu()) {
+    if (selectedMenuItem < menuItemsCounter ) selectedMenuItem++;
+  }
+  lastButtonInterrupt = millis();
+}
+
+void IRAM_ATTR buttonDownIsr() {
+  if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
+  if (selectedMenuItem >= 0 ) selectedMenuItem--;
+  lastButtonInterrupt = millis();  
+}
+
+
+unsigned long lastGeigerInterrupt = 0;
 
 void IRAM_ATTR geigerCounterIsr() {
-  if (micros() - last_tube_interrupt > DEBOUNCE) {    
+  if (micros() - lastGeigerInterrupt > GEIGER_DEBOUNCE_MICROSECONDS) {    
     Serial.print(micros());
     Serial.println(" interrupt");
     if (cps < ULONG_MAX / 60)	cps++;
+    lastGeigerInterrupt = micros();
   }
-  last_tube_interrupt = micros();
 }
 
 int co2ppm() {

@@ -33,6 +33,8 @@
 #define YELLOW          0xFFE0  
 #define WHITE           0xFFFF
 
+#define ON_SCREEN_MENU_ITEMS 11
+
 #define EEPROM_INITIAL_SIZE 500
 
 #define EEPROM_ADDRESS_WIFI_ENABLED 20

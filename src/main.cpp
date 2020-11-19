@@ -17,6 +17,7 @@
 #include <utils.h>
 #include <entities/MeteoData.h>
 #include <entities/UiState.h>
+#include <entities/WifiNetwork.h>
 
 volatile unsigned long cps = 0L;
 MovingAverage<volatile unsigned long, CYCLE_SIZE> cpm;
@@ -35,6 +36,8 @@ char** menuItems;
 
 bool co2Enabled = false;
 
+QueueHandle_t handler;
+char ** networks;
 /**
  * Method signatures;
  * */
@@ -51,6 +54,7 @@ void cpsUpdater(void * parameter);
 void getSensorsData(void * parameter);
 void ui(void * parameter);
 void webServer(void * parameter);
+void scanWifi(void * parameter);
 
 // ui methods
 void drawHeader(void);
@@ -61,6 +65,7 @@ void drawWifiMenuScreen(void);
 void drawEnableWifiScreen(void);
 void drawCo2Scren(void);
 void drawEnableCo2Scren(void);
+void drawWifiScannerScreen(void);
 
 void showMainScreen(void);
 void showMenuScreen(void);
@@ -68,6 +73,7 @@ void showWifiScren(void);
 void showEnableWifiScreen(void);
 void showCo2Scren(void);
 void showEnableCo2Scren(void);
+void showScanWifiScreen(void);
 
 void setup() {
   Serial.begin(UART_BAUNDRATE);
@@ -103,17 +109,17 @@ void setup() {
     oled.print(".");
   }
 
-  oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
-
   if (WiFi.status() != WL_CONNECTED) {
     oled.setTextColor(RED);
     oled.println("\nconnection timeout");
     oled.setTextColor(GREEN);
   } else {
     oled.println("\nconnected");
-    oled.println("push ntp client settings");
+    oled.println("ntp setting up..");
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   }
+  
+  oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
   
   xTaskCreate(cpsUpdater, "cpsUpdater", 1000, NULL, 2, NULL );
   xTaskCreate(getSensorsData,  "getSensorsData", 2500, NULL, 4, NULL);
@@ -122,6 +128,8 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     xTaskCreate(webServer, "webServer", 3000, NULL, 1, NULL);
   }
+
+  handler = xQueueCreate(1, sizeof networks);
 
   /** writeStringToEEPROM("asdfghjk", 50);
   int length = EEPROM.read(50);
@@ -161,6 +169,13 @@ void showEnableWifiScreen() {
   selectedMenuItem = 1;
 }
 
+void showScanWifiScreen() {
+  uiState = UiState::WIFI_SCAN;
+  menuItemsCounter = 0;
+  selectedMenuItem = 0;
+  xTaskCreate(scanWifi, "scanWifi", 3000, NULL, 6, NULL);
+}
+
 void showCo2Scren() {
   uiState = UiState::CO2;
   delete[] menuItems;
@@ -177,7 +192,9 @@ void showEnableCo2Scren() {
   selectedMenuItem = co2Enabled ? 2 : 1;
 }
 
-void loop() { }
+void loop() {
+ 
+ }
 
 void drawHeader() {
   oled.setTextSize(1);
@@ -208,16 +225,7 @@ void drawEnableWifiScreen() {
   oled.setTextColor(GREEN, BLACK);
   oled.setTextSize(1);
 
-  oled.println("[ Enable WiFi? ]");
-  oled.println();
-  for(uint8_t i = 0; i < menuItemsCounter; i++) {
-    if (i == selectedMenuItem) {
-      oled.print("[*]");
-    } else { 
-      oled.print("[ ]");
-    }
-    oled.println(menuItems[i]);
-  }
+  drawMenu("[ Enable WiFi? ]");
 }
 
 void drawWifiMenuScreen() {
@@ -227,16 +235,7 @@ void drawWifiMenuScreen() {
   oled.setTextColor(GREEN, BLACK);
   oled.setTextSize(1);
 
-  oled.println("[ WiFi ]");
-  oled.println();
-  for(uint8_t i = 0; i < menuItemsCounter; i++) {
-    if (i == selectedMenuItem) {
-      oled.print("[*]");
-    } else { 
-      oled.print("[ ]");
-    }
-    oled.println(menuItems[i]);
-  }
+  drawMenu("[ WiFi ]");
 }
 
 void drawCo2Scren() {
@@ -259,17 +258,43 @@ void drawEnableCo2Scren() {
   drawMenu("[ enable CO2? ]");
 }
 
+void drawWifiScannerScreen() {
+  drawHeader();
+  
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+  oled.println(" networks nearby");
+  oled.println();
+
+  for(
+    uint8_t i = (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? 0 : selectedMenuItem - ON_SCREEN_MENU_ITEMS + 1; 
+    (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < menuItemsCounter) : i <= selectedMenuItem; 
+    i++
+  ) {
+    oled.print((i == selectedMenuItem) ?"[*]" : "[ ]");
+    if (i == 0) {
+      oled.printf(" %-17s\n", "<- back");
+      continue;
+    }
+    //oled.printf(" %-17s\n", networks[i]);
+  }
+  oled.printf("%-21s","");
+}
+
 void drawMenu(char title[]) {
   oled.println(title);
   oled.println();
-  for(uint8_t i = 0; i < menuItemsCounter; i++) {
-    if (i == selectedMenuItem) {
-      oled.print("[*]");
-    } else { 
-      oled.print("[ ]");
-    }
-    oled.println(menuItems[i]);
+
+  for(
+    uint8_t i = (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? 0 : selectedMenuItem - ON_SCREEN_MENU_ITEMS + 1; 
+    (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < menuItemsCounter) : i <= selectedMenuItem; 
+    i++
+  ) {
+    oled.print((i == selectedMenuItem) ?"[*]" : "[ ]");
+    oled.printf(" %-17s\n", (menuItems[i]));
   }
+  oled.printf("%-21s",""); 
 }
 
 void drawMenuScreen() {
@@ -290,12 +315,12 @@ void drawMainScreen() {
   /** print temperature */
   oled.drawBitmap(2, 19, temp_bmp, 20, 20, BLUE);
   oled.setCursor(26, 22);
-  oled.printf("%2.1f C ", data.temperature);
+  oled.printf("%-2.1f C ", data.temperature);
 
   /** print humidity*/
   oled.drawBitmap(0, 40, hum_bmp, 20, 20, BLUE);
   oled.setCursor(26, 42);
-  oled.printf("%2d %% ", data.humidity);
+  oled.printf("%-d %% ", data.humidity);
   
   /** print radiation details*/
   double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / 151.0);
@@ -310,13 +335,13 @@ void drawMainScreen() {
 
   oled.drawBitmap(0, 60, rad_bmp, 24, 24, YELLOW);
   oled.setCursor(26, 62);
-  oled.printf("%2.2fuSv", microsiverts);
+  oled.printf("%-2.2fuSv", microsiverts);
 
   /** print preassure*/
   oled.setTextColor(WHITE, BLACK);
   oled.drawBitmap(2, 84, pres_bmp, 20, 20, MAGENTA);
   oled.setCursor(26, 84);
-  oled.printf("%3u mmHg", data.preassure);
+  oled.printf("%-u mmHg", data.preassure);
 
   /** print CO2 ppm*/
   int co2 = data.co2;
@@ -330,7 +355,7 @@ void drawMainScreen() {
 
   oled.drawBitmap(2, 104, co2_bmp, 20, 20, RED);
   oled.setCursor(26, 104);
-  oled.printf("%4d ppm", co2);
+  oled.printf("%-d ppm", co2);
 
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
@@ -345,7 +370,7 @@ void drawMainScreen() {
  * screen updater
 */
 void ui(void * parameters) {
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
   for(;;) {
@@ -370,6 +395,20 @@ void ui(void * parameters) {
       case UiState::WIFI_ENABLE:
         drawEnableWifiScreen();
         break;
+      
+      case UiState::WIFI_SCAN:
+       if (uxQueueMessagesWaiting(handler) != 0) {
+          portBASE_TYPE xStatus;
+          xStatus = xQueueReceive(handler, &networks, 0);
+          if (xStatus == pdPASS ) {
+            Serial.println("received:");
+            for (uint8_t i = 0; i < menuItemsCounter; i++) {
+              Serial.println(networks[i]);
+            }
+          }
+        }
+        drawWifiScannerScreen();
+        break;
 
       case UiState::CO2:
         drawCo2Scren();
@@ -382,7 +421,7 @@ void ui(void * parameters) {
       default:
         break;
     }
-    vTaskDelay(32 / portTICK_PERIOD_MS);
+    vTaskDelay(64 / portTICK_PERIOD_MS);
   }
 }
 
@@ -436,7 +475,7 @@ void getSensorsData(void * parameter) {
  * 
  * calc CPM and CPS values
 */
-void cpsUpdater(void * parameter){
+void cpsUpdater(void * parameter) {
   for(;;){ 
     noInterrupts();
     cpm.push(cps);
@@ -444,6 +483,41 @@ void cpsUpdater(void * parameter){
     interrupts();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
+}
+
+/**
+ * FreeRTOS task
+ * 
+ * wifi scanner
+*/
+void scanWifi(void * parameter) {
+  //WiFi.mode(WIFI_STA);
+  //WiFi.disconnect();
+  /*int scanResult = WiFi.scanNetworks(false,true);
+  char networks[scanResult];
+  for (int8_t networkCounter = 0; networkCounter < scanResult; networkCounter++) {
+    //WifiNetwork network;
+    //char cstr_ssid[20];
+    int32_t rssi;
+    uint8_t encryptionType;
+    uint8_t* bssid;
+    int32_t channel;
+    String ssid;
+    WiFi.getNetworkInfo(
+      networkCounter,
+      ssid,
+      encryptionType,
+      rssi,
+      bssid,
+      channel
+    );
+    networks[networkCounter] = ssid[0];
+  }**/
+
+  char ** data = new char*[7] {" Wifi"," Wifi1", " Wifi2", " Wifi3", " Wifi4", " Wifi5", " Wifi6"};
+  menuItemsCounter = 7;//scanResult + 1;
+  xQueueSend(handler, &data, 0);
+  vTaskDelete(NULL);
 }
 
 unsigned long lastButtonInterrupt = 0;
@@ -480,6 +554,8 @@ void IRAM_ATTR buttonOkIsr() {
         case 1: 
           showEnableWifiScreen();
           break;
+        case 3:
+          showScanWifiScreen();
         default:
           break;
       }
@@ -493,6 +569,17 @@ void IRAM_ATTR buttonOkIsr() {
         case 2:
           // TODO add anything)
           break;
+        default:
+          break;
+      }
+      break;
+    }
+    case UiState::WIFI_SCAN: {
+      switch (selectedMenuItem) {
+        case 0:
+          showWifiScren();
+          break;
+      
         default:
           break;
       }

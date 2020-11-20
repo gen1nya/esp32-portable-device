@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-typedef struct WifiNetwork {
+struct WifiNetwork {
     String ssid;
     int32_t rssi;
     uint8_t encryptionType;

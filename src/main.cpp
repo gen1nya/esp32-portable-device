@@ -37,7 +37,7 @@ char** menuItems;
 bool co2Enabled = false;
 
 QueueHandle_t handler;
-char ** networks;
+char ** networks = new char * [0];
 /**
  * Method signatures;
  * */
@@ -170,10 +170,10 @@ void showEnableWifiScreen() {
 }
 
 void showScanWifiScreen() {
-  uiState = UiState::WIFI_SCAN;
   menuItemsCounter = 0;
   selectedMenuItem = 0;
   xTaskCreate(scanWifi, "scanWifi", 3000, NULL, 6, NULL);
+  uiState = UiState::WIFI_SCAN;
 }
 
 void showCo2Scren() {
@@ -277,7 +277,7 @@ void drawWifiScannerScreen() {
       oled.printf(" %-17s\n", "<- back");
       continue;
     }
-    //oled.printf(" %-17s\n", networks[i]);
+    oled.printf(" %-17s\n", networks[i-1]);
   }
   oled.printf("%-21s","");
 }
@@ -399,12 +399,17 @@ void ui(void * parameters) {
       case UiState::WIFI_SCAN:
        if (uxQueueMessagesWaiting(handler) != 0) {
           portBASE_TYPE xStatus;
+          delete [] networks;
           xStatus = xQueueReceive(handler, &networks, 0);
-          if (xStatus == pdPASS ) {
-            Serial.println("received:");
-            for (uint8_t i = 0; i < menuItemsCounter; i++) {
-              Serial.println(networks[i]);
-            }
+          if (xStatus == pdPASS) {
+            if (DEBUG) {
+              Serial.println("received:");
+              for (uint8_t i = 0; i < menuItemsCounter - 1; i++) {
+                Serial.println(networks[i]);
+              }
+            }   
+          } else {
+            menuItemsCounter = 1;
           }
         }
         drawWifiScannerScreen();
@@ -491,13 +496,11 @@ void cpsUpdater(void * parameter) {
  * wifi scanner
 */
 void scanWifi(void * parameter) {
-  //WiFi.mode(WIFI_STA);
-  //WiFi.disconnect();
-  /*int scanResult = WiFi.scanNetworks(false,true);
-  char networks[scanResult];
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();  
+  int scanResult = WiFi.scanNetworks(false,true);
+  char ** data = new char*[scanResult];
   for (int8_t networkCounter = 0; networkCounter < scanResult; networkCounter++) {
-    //WifiNetwork network;
-    //char cstr_ssid[20];
     int32_t rssi;
     uint8_t encryptionType;
     uint8_t* bssid;
@@ -511,12 +514,16 @@ void scanWifi(void * parameter) {
       bssid,
       channel
     );
-    networks[networkCounter] = ssid[0];
-  }**/
-
-  char ** data = new char*[7] {" Wifi"," Wifi1", " Wifi2", " Wifi3", " Wifi4", " Wifi5", " Wifi6"};
-  menuItemsCounter = 7;//scanResult + 1;
+    if (DEBUG) {
+      Serial.println("=====================");
+      Serial.printf("%d %s\n", ssid.length(), ssid.c_str());
+    }
+    data[networkCounter] = new char[ssid.length()];
+    strcpy(data[networkCounter], ssid.c_str());
+  }
   xQueueSend(handler, &data, 0);
+  WiFi.begin(ssid, password);
+  menuItemsCounter = scanResult + 1;
   vTaskDelete(NULL);
 }
 
@@ -576,10 +583,10 @@ void IRAM_ATTR buttonOkIsr() {
     }
     case UiState::WIFI_SCAN: {
       switch (selectedMenuItem) {
-        case 0:
+        case 0: {
           showWifiScren();
           break;
-      
+        }
         default:
           break;
       }

@@ -35,6 +35,7 @@ uint8_t selectedMenuItem = 0;
 char** menuItems;
 
 bool co2Enabled = false;
+bool wifiEnabled = false;
 
 QueueHandle_t handler;
 char ** networks = new char * [0];
@@ -55,6 +56,7 @@ void getSensorsData(void * parameter);
 void ui(void * parameter);
 void webServer(void * parameter);
 void scanWifi(void * parameter);
+void wifiSwitch(void * parameter);
 
 // ui methods
 void drawHeader(void);
@@ -95,31 +97,38 @@ void setup() {
   oled.setTextColor(GREEN);
   oled.setCursor(0, 0);
   oled.println("oled ok");
-  oled.print("connecting to wifi");
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
 
   co2Enabled = EEPROM.readBool(EEPROM_ADDRESS_CO2_ENABLED);
-  
-  uint8_t i = 0;
-  while (WiFi.status() != WL_CONNECTED && i < WIFI_CONNECTION_TIMEOUT) {
-    delay(1000);
-    i++;
-    oled.print(".");
-  }
+  wifiEnabled = EEPROM.readBool(EEPROM_ADDRESS_WIFI_ENABLED);
 
-  if (WiFi.status() != WL_CONNECTED) {
-    oled.setTextColor(RED);
-    oled.println("\nconnection timeout");
-    oled.setTextColor(GREEN);
-  } else {
-    oled.println("\nconnected");
-    oled.println("ntp setting up..");
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  }
-  
   oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
+  oled.printf("\nwifi: %s\n", wifiEnabled ? "enabled" : "disabled");
+  
+  if (wifiEnabled) {
+    oled.print("connecting to wifi");
+
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+
+    uint8_t i = 0;
+    while (WiFi.status() != WL_CONNECTED && i < WIFI_CONNECTION_TIMEOUT) {
+      delay(1000);
+      i++;
+      oled.print(".");
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+      oled.setTextColor(RED);
+      oled.println("\nconnection timeout");
+      oled.setTextColor(GREEN);
+      wifiEnabled = false;
+    } else {
+      oled.println("\nconnected");
+      oled.println("ntp setting up..");
+      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      wifiEnabled = true;
+    }
+  }
   
   xTaskCreate(cpsUpdater, "cpsUpdater", 1000, NULL, 2, NULL );
   xTaskCreate(getSensorsData,  "getSensorsData", 2500, NULL, 4, NULL);
@@ -200,22 +209,23 @@ void drawHeader() {
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
   oled.setCursor(0, 0);
-  if (WiFi.status() != WL_CONNECTED) {
+  oled.setTextWrap(false);
+  if (!wifiEnabled || (WiFi.status() != WL_CONNECTED)) {
     oled.setTextColor(RED, BLACK);
-    oled.print("[NA] ");
+    oled.print("[NA ] ");
   } else {
     oled.setTextColor(WHITE, BLACK);
     oled.printf("[%d] ", WiFi.RSSI());
+    oled.setTextColor(BLUE, BLACK);
+    oled.printf("%02d:%02d ", timeinfo.tm_hour, timeinfo.tm_min);
   }
-  oled.setTextColor(BLUE, BLACK);
-  oled.printf("%02d:%02d ", timeinfo.tm_hour, timeinfo.tm_min);
   
   oled.setTextColor(WHITE, BLACK);
-  oled.printf("RAM:%dKB\n", (ESP.getFreeHeap() / 1024));
-
+  oled.printf("RAM:%dKB               \n", (ESP.getFreeHeap() / 1024));
   if (WiFi.status() == WL_CONNECTED) oled.printf("ip: %s\n", WiFi.localIP().toString().c_str());
 
   oled.drawLine(0, 17, 128, 17, WHITE);
+  oled.setTextWrap(true);
 }
 
 void drawEnableWifiScreen() {
@@ -294,7 +304,7 @@ void drawMenu(char title[]) {
     oled.print((i == selectedMenuItem) ?"[*]" : "[ ]");
     oled.printf(" %-17s\n", (menuItems[i]));
   }
-  oled.printf("%-21s",""); 
+  oled.printf("%-21s","");
 }
 
 void drawMenuScreen() {
@@ -397,7 +407,7 @@ void ui(void * parameters) {
         break;
       
       case UiState::WIFI_SCAN:
-       if (uxQueueMessagesWaiting(handler) != 0) {
+        if (uxQueueMessagesWaiting(handler) != 0) {
           portBASE_TYPE xStatus;
           delete [] networks;
           xStatus = xQueueReceive(handler, &networks, 0);
@@ -428,6 +438,20 @@ void ui(void * parameters) {
     }
     vTaskDelay(64 / portTICK_PERIOD_MS);
   }
+}
+
+void wifiSwitch(void * parameter) {
+  if (*((bool*) parameter)) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);  
+    wifiEnabled = true;
+  } else {
+    wifiEnabled = false;
+    WiFi.mode(WIFI_OFF);
+  }
+  EEPROM.writeBool(EEPROM_ADDRESS_WIFI_ENABLED, wifiEnabled);
+  EEPROM.commit();
+  vTaskDelete( NULL );
 }
 
 /**
@@ -527,6 +551,7 @@ void scanWifi(void * parameter) {
   vTaskDelete(NULL);
 }
 
+
 unsigned long lastButtonInterrupt = 0;
 
 void IRAM_ATTR buttonOkIsr() {
@@ -569,16 +594,20 @@ void IRAM_ATTR buttonOkIsr() {
       break;
     }
     case UiState::WIFI_ENABLE: {
-      showWifiScren();
       switch (selectedMenuItem) {
+        case 0:
+          break;
         case 1:
+          static bool stat_true = true;
+          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);
           break;
         case 2:
-          // TODO add anything)
-          break;
+          static bool stat_false = false;
+          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_false, 5, NULL);
         default:
           break;
       }
+      showWifiScren();
       break;
     }
     case UiState::WIFI_SCAN: {

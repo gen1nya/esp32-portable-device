@@ -205,14 +205,25 @@ void loop() {
  
  }
 
+int workingIndicatorPixel = 0;
+bool colorIndicatorPixel = true;
 void drawHeader() {
+  /*workingIndicatorPixel++;
+  if (workingIndicatorPixel >= 122) {
+    workingIndicatorPixel = 0;
+    colorIndicatorPixel = !colorIndicatorPixel; 
+  }
+  oled.drawPixel(workingIndicatorPixel, 17, colorIndicatorPixel ? WHITE: BLACK);*/
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
   oled.setCursor(0, 0);
   oled.setTextWrap(false);
-  if (!wifiEnabled || (WiFi.status() != WL_CONNECTED)) {
+  if (!wifiEnabled ) {
     oled.setTextColor(RED, BLACK);
-    oled.print("[NA ] ");
+    oled.print("[N/A] ");
+  } else if (WiFi.status() != WL_CONNECTED) {
+    oled.setTextColor(YELLOW, BLACK);
+    oled.print("[---] ");
   } else {
     oled.setTextColor(WHITE, BLACK);
     oled.printf("[%d] ", WiFi.RSSI());
@@ -222,9 +233,13 @@ void drawHeader() {
   
   oled.setTextColor(WHITE, BLACK);
   oled.printf("RAM:%dKB               \n", (ESP.getFreeHeap() / 1024));
-  if (WiFi.status() == WL_CONNECTED) oled.printf("ip: %s\n", WiFi.localIP().toString().c_str());
+  if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
+    oled.printf("ip: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    oled.printf("%21s","");  // fill address string
+  }
 
-  oled.drawLine(0, 17, 128, 17, WHITE);
+  oled.drawLine(0, 18, 128, 18, WHITE);
   oled.setTextWrap(true);
 }
 
@@ -319,18 +334,18 @@ void drawMenuScreen() {
 
 void drawMainScreen() {
   drawHeader();
-
+  oled.setTextWrap(false);
   oled.setTextSize(2);
 
   /** print temperature */
   oled.drawBitmap(2, 19, temp_bmp, 20, 20, BLUE);
   oled.setCursor(26, 22);
-  oled.printf("%-2.1f C ", data.temperature);
+  oled.printf("%-2.1f C    ", data.temperature);
 
   /** print humidity*/
   oled.drawBitmap(0, 40, hum_bmp, 20, 20, BLUE);
   oled.setCursor(26, 42);
-  oled.printf("%-d %% ", data.humidity);
+  oled.printf("%-d %%    ", data.humidity);
   
   /** print radiation details*/
   double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / 151.0);
@@ -345,13 +360,13 @@ void drawMainScreen() {
 
   oled.drawBitmap(0, 60, rad_bmp, 24, 24, YELLOW);
   oled.setCursor(26, 62);
-  oled.printf("%-2.2fuSv", microsiverts);
+  oled.printf("%-2.2fuSv    ", microsiverts);
 
   /** print preassure*/
   oled.setTextColor(WHITE, BLACK);
   oled.drawBitmap(2, 84, pres_bmp, 20, 20, MAGENTA);
   oled.setCursor(26, 84);
-  oled.printf("%-u mmHg", data.preassure);
+  oled.printf("%-u mmHg    ", data.preassure);
 
   /** print CO2 ppm*/
   int co2 = data.co2;
@@ -365,11 +380,11 @@ void drawMainScreen() {
 
   oled.drawBitmap(2, 104, co2_bmp, 20, 20, RED);
   oled.setCursor(26, 104);
-  oled.printf("%-d ppm", co2);
+  oled.printf("%-d ppm    ", co2);
 
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
-  
+  oled.setTextWrap(true);
   /*oled.printf(" %02d:%02d:%02d \n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   oled.println(&timeinfo, "  %a, %d.%m.%Y" );*/
 }
@@ -436,7 +451,7 @@ void ui(void * parameters) {
       default:
         break;
     }
-    vTaskDelay(64 / portTICK_PERIOD_MS);
+    vTaskDelay(32 / portTICK_PERIOD_MS);
   }
 }
 
@@ -444,6 +459,7 @@ void wifiSwitch(void * parameter) {
   if (*((bool*) parameter)) {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);  
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     wifiEnabled = true;
   } else {
     wifiEnabled = false;
@@ -489,7 +505,9 @@ void getSensorsData(void * parameter) {
   }
 
   for(;;){ 
-    getLocalTime(&timeinfo);
+    if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
+      getLocalTime(&timeinfo);
+    }
     data.humidity = bme.readHumidity();
     data.preassure = (int) (bme.readPressure() / 133.333);
     data.temperature = bme.readTemperature();
@@ -521,7 +539,7 @@ void cpsUpdater(void * parameter) {
 */
 void scanWifi(void * parameter) {
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect();  
+  WiFi.disconnect();
   int scanResult = WiFi.scanNetworks(false,true);
   char ** data = new char*[scanResult];
   for (int8_t networkCounter = 0; networkCounter < scanResult; networkCounter++) {
@@ -546,7 +564,12 @@ void scanWifi(void * parameter) {
     strcpy(data[networkCounter], ssid.c_str());
   }
   xQueueSend(handler, &data, 0);
-  WiFi.begin(ssid, password);
+  if (wifiEnabled) {
+    WiFi.begin(ssid, password);
+  } else {
+    WiFi.mode(WIFI_OFF);
+  }
+  
   menuItemsCounter = scanResult + 1;
   vTaskDelete(NULL);
 }
@@ -671,8 +694,11 @@ unsigned long lastGeigerInterrupt = 0;
 
 void IRAM_ATTR geigerCounterIsr() {
   if (micros() - lastGeigerInterrupt > GEIGER_DEBOUNCE_MICROSECONDS) {    
-    Serial.print(micros());
-    Serial.println(" interrupt");
+    if (DEBUG) {
+      Serial.print(micros());
+      Serial.println(" interrupt");
+    }
+    
     if (cps < ULONG_MAX / 60)	cps++;
     lastGeigerInterrupt = micros();
   }

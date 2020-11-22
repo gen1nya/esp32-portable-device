@@ -35,6 +35,7 @@ uint8_t selectedMenuItem = 0;
 char** menuItems;
 
 bool co2Enabled = false;
+bool geigerEnabled = false;
 bool wifiEnabled = false;
 
 QueueHandle_t handler;
@@ -68,6 +69,8 @@ void drawEnableWifiScreen(void);
 void drawCo2Scren(void);
 void drawEnableCo2Scren(void);
 void drawWifiScannerScreen(void);
+void drawGeigerScreen(void);
+void drawEnableGeigerScreen(void);
 
 void showMainScreen(void);
 void showMenuScreen(void);
@@ -76,6 +79,8 @@ void showEnableWifiScreen(void);
 void showCo2Scren(void);
 void showEnableCo2Scren(void);
 void showScanWifiScreen(void);
+void showGeigerScren(void);
+void showEnableGeigerScreen(void);
 
 void setup() {
   Serial.begin(UART_BAUNDRATE);
@@ -87,6 +92,7 @@ void setup() {
   pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
+  pinMode(PIN_ENABLE_GEIGER_COUNTER, OUTPUT);
   attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
   attachInterrupt(PIN_BUTTON_OK, buttonOkIsr, FALLING);
   attachInterrupt(PIN_BUTTON_UP, buttonUpIsr, FALLING);
@@ -100,6 +106,9 @@ void setup() {
 
   co2Enabled = EEPROM.readBool(EEPROM_ADDRESS_CO2_ENABLED);
   wifiEnabled = EEPROM.readBool(EEPROM_ADDRESS_WIFI_ENABLED);
+  geigerEnabled = EEPROM.readBool(EEPROM_ADDRESS_GEIGER_ENABLED);
+
+  digitalWrite(PIN_ENABLE_GEIGER_COUNTER, geigerEnabled);
 
   oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
   oled.printf("\nwifi: %s\n", wifiEnabled ? "enabled" : "disabled");
@@ -175,7 +184,7 @@ void showEnableWifiScreen() {
   delete[] menuItems;
   menuItems = new char*[3] {" <- back"," Enable", " Disable"};
   menuItemsCounter = 3;
-  selectedMenuItem = 1;
+  selectedMenuItem = wifiEnabled ? 2 : 1;
 }
 
 void showScanWifiScreen() {
@@ -201,19 +210,28 @@ void showEnableCo2Scren() {
   selectedMenuItem = co2Enabled ? 2 : 1;
 }
 
+void showGeigerScren() {
+  uiState = UiState::GEIGER;
+  delete[] menuItems;
+  menuItems = new char*[2] {" <- back"," on/off"};
+  menuItemsCounter = 2;
+  selectedMenuItem = 0;
+}
+
+void showEnableGeigerScreen() {
+  uiState = UiState::GEIGER_ENABLE;
+  delete[] menuItems;
+  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
+  menuItemsCounter = 3;
+  selectedMenuItem = geigerEnabled ? 2 : 1;
+}
+
+
 void loop() {
  
- }
+}
 
-int workingIndicatorPixel = 0;
-bool colorIndicatorPixel = true;
 void drawHeader() {
-  /*workingIndicatorPixel++;
-  if (workingIndicatorPixel >= 122) {
-    workingIndicatorPixel = 0;
-    colorIndicatorPixel = !colorIndicatorPixel; 
-  }
-  oled.drawPixel(workingIndicatorPixel, 17, colorIndicatorPixel ? WHITE: BLACK);*/
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
   oled.setCursor(0, 0);
@@ -281,6 +299,26 @@ void drawEnableCo2Scren() {
   oled.setTextSize(1);
   
   drawMenu("[ enable CO2? ]");
+}
+
+void drawGeigerScreen() {
+  drawHeader();
+  
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+  
+  drawMenu("[ Geiger counter ]");
+}
+
+void drawEnableGeigerScreen() {
+  drawHeader();
+  
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+  
+  drawMenu("[ enable geiger? ]");
 }
 
 void drawWifiScannerScreen() {
@@ -448,6 +486,14 @@ void ui(void * parameters) {
         drawEnableCo2Scren();
         break;
 
+      case UiState::GEIGER:
+        drawGeigerScreen();
+        break;
+
+      case UiState::GEIGER_ENABLE:
+        drawEnableGeigerScreen();
+        break;
+
       default:
         break;
     }
@@ -588,10 +634,13 @@ void IRAM_ATTR buttonOkIsr() {
           break;
         case 1:
           showWifiScren();
+          break;
         case 2: 
+          showGeigerScren();
           break;
         case 3: 
           showCo2Scren();
+          break;
         default:
           break;
       }
@@ -671,6 +720,35 @@ void IRAM_ATTR buttonOkIsr() {
       showCo2Scren();
       break;
     }
+    case UiState::GEIGER: {
+      switch (selectedMenuItem) {
+      case 0:
+        showMenuScreen();
+        break;
+      case 1: 
+        showEnableGeigerScreen();
+        break;
+      }
+      break;
+    }
+    case UiState::GEIGER_ENABLE: {
+      switch (selectedMenuItem) {
+        case 1:
+          EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, true);
+          geigerEnabled = true;
+          digitalWrite(PIN_ENABLE_GEIGER_COUNTER, HIGH);
+          break;
+        case 2:
+          EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, false);
+          geigerEnabled = false;
+          digitalWrite(PIN_ENABLE_GEIGER_COUNTER, LOW);
+          break;
+        default:
+          break;
+      }
+      showGeigerScren();
+      break;
+    }
   }
   lastButtonInterrupt = millis();
 }
@@ -688,7 +766,6 @@ void IRAM_ATTR buttonDownIsr() {
   if (selectedMenuItem > 0 ) selectedMenuItem--;
   lastButtonInterrupt = millis();  
 }
-
 
 unsigned long lastGeigerInterrupt = 0;
 

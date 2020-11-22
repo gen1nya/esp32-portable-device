@@ -93,7 +93,6 @@ void setup() {
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   pinMode(PIN_ENABLE_GEIGER_COUNTER, OUTPUT);
-  attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
   attachInterrupt(PIN_BUTTON_OK, buttonOkIsr, FALLING);
   attachInterrupt(PIN_BUTTON_UP, buttonUpIsr, FALLING);
   attachInterrupt(PIN_BUTTON_DOWN, buttonDownIsr, FALLING);
@@ -108,10 +107,15 @@ void setup() {
   wifiEnabled = EEPROM.readBool(EEPROM_ADDRESS_WIFI_ENABLED);
   geigerEnabled = EEPROM.readBool(EEPROM_ADDRESS_GEIGER_ENABLED);
 
+  if (geigerEnabled) {
+    attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
+  }
+
   digitalWrite(PIN_ENABLE_GEIGER_COUNTER, geigerEnabled);
 
   oled.printf("\nco2: %s\n", co2Enabled ? "enabled" : "disabled");
   oled.printf("\nwifi: %s\n", wifiEnabled ? "enabled" : "disabled");
+  oled.printf("\ngeiger: %s\n", geigerEnabled ? "enabled" : "disabled");
   
   if (wifiEnabled) {
     oled.print("connecting to wifi");
@@ -513,7 +517,7 @@ void wifiSwitch(void * parameter) {
   }
   EEPROM.writeBool(EEPROM_ADDRESS_WIFI_ENABLED, wifiEnabled);
   EEPROM.commit();
-  vTaskDelete( NULL );
+  vTaskDelete(NULL);
 }
 
 /**
@@ -737,11 +741,13 @@ void IRAM_ATTR buttonOkIsr() {
           EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, true);
           geigerEnabled = true;
           digitalWrite(PIN_ENABLE_GEIGER_COUNTER, HIGH);
+          attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
           break;
         case 2:
           EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, false);
           geigerEnabled = false;
           digitalWrite(PIN_ENABLE_GEIGER_COUNTER, LOW);
+          detachInterrupt(PIN_GEIGER_COUNTER);
           break;
         default:
           break;

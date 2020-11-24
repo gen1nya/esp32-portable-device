@@ -261,7 +261,7 @@ void drawHeader() {
     oled.printf("%21s","");  // fill address string
   }
 
-  oled.drawLine(0, 18, 128, 18, WHITE);
+  oled.drawLine(0, 17, 128, 17, WHITE);
   oled.setTextWrap(true);
 }
 
@@ -313,6 +313,18 @@ void drawGeigerScreen() {
   oled.setTextSize(1);
   
   drawMenu("[ Geiger counter ]");
+  double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / CPS_TO_MECROSIVERTS_K);
+
+  oled.printf("1min avg: %-2.2fuSv    ", microsiverts);
+  for(
+    uint8_t cpsCount = 0;
+    cpsCount < cpm.size();
+    cpsCount++
+  ) {
+    unsigned long cpsValue = cpm.get(cpsCount);
+    oled.fillRect(cpsCount*2, 127, 2, -56, BLACK);
+    oled.fillRect(cpsCount*2, 127, 2, -(cpsValue <= 56 ? cpsValue : 56), GREEN);
+  }
 }
 
 void drawEnableGeigerScreen() {
@@ -390,7 +402,7 @@ void drawMainScreen() {
   oled.printf("%-d %%    ", data.humidity);
   
   /** print radiation details*/
-  double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / 151.0);
+  double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / CPS_TO_MECROSIVERTS_K);
   oled.setTextSize(2);
   if (microsiverts <= 0.30) {
     oled.setTextColor(GREEN, BLACK);

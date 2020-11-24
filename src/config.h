@@ -50,6 +50,8 @@
 
 #define CYCLE_SIZE      60
 
+const double CPS_TO_MECROSIVERTS_K = 151.0;
+
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3600 * 3;
 const int   daylightOffset_sec = 3600;

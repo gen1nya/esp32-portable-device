@@ -45,6 +45,10 @@ public:
 		m_sum += value;
 	}
 
+	reference get(int index) {
+		return m_buffer[index];
+	}
+
 	reference back()
 	{
 		return m_buffer.back();

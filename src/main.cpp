@@ -298,7 +298,7 @@ void drawCo2Scren() {
     co2measuringCounter < cpm.size();
     co2measuringCounter++
   ) {
-    // convert real value to line height (px)
+    // convert real value to line height. 5000(max ppm) / 56 (max chart line height)
     uint16_t co2Value = co2DataCycleArray.get(co2measuringCounter) / 89;
     oled.fillRect(co2measuringCounter, 127, 2, -56, BLACK);
     oled.fillRect(

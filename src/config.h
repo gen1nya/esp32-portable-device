@@ -51,7 +51,7 @@
 #define GEIGER_CYCLE_SIZE 60
 
 #define CO2_CYCLE_SIZE 128
-#define CO2_STORING_INTERVAL 3000 //5min, ~10h on chart
+#define CO2_STORING_INTERVAL 3000000 //5min, ~10h on chart
 
 #define SENSOR_POLLING_INTERVAL 100
 

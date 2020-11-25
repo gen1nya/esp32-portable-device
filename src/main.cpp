@@ -295,7 +295,7 @@ void drawCo2Scren() {
   
   for(
     uint8_t co2measuringCounter = 0;
-    co2measuringCounter < cpm.size();
+    co2measuringCounter < co2DataCycleArray.size();
     co2measuringCounter++
   ) {
     // convert real value to line height. 5000(max ppm) / 56 (max chart line height)

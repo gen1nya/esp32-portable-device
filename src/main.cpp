@@ -100,6 +100,7 @@ void setup() {
   attachInterrupt(PIN_BUTTON_DOWN, buttonDownIsr, FALLING);
 
   oled.begin();
+  oled.setRotation(0);
   oled.fillScreen(BLACK);
   oled.setTextColor(GREEN);
   oled.setCursor(0, 0);
@@ -291,7 +292,7 @@ void drawCo2Scren() {
   
   drawMenu("[ CO2 ]");
   
-  oled.printf("cur : %-d ppm    ", data.co2);
+  oled.printf("cur: %-d ppm    ", data.co2);
   
   for(
     uint8_t co2measuringCounter = 0;
@@ -299,15 +300,12 @@ void drawCo2Scren() {
     co2measuringCounter++
   ) {
     // convert real value to line height. 5000(max ppm) / 56 (max chart line height)
-    uint16_t co2Value = co2DataCycleArray.get(co2measuringCounter) / 89;
-    oled.fillRect(co2measuringCounter, 127, 2, -56, BLACK);
-    oled.fillRect(
-      co2measuringCounter,
-      127,
-      2,
-      -(co2Value <= 56 ? co2Value : 56),
-      GREEN
-    );
+    uint16_t co2RawValue = co2DataCycleArray.get(co2measuringCounter);
+    uint8_t co2Value = co2RawValue / 89;
+    oled.fillRect(co2measuringCounter, 127, 1, 
+        -CHART_HEIGHT + (co2Value <= CHART_HEIGHT ? co2Value : CHART_HEIGHT), BLACK);
+    oled.fillRect(co2measuringCounter, 127, 1, -(co2Value <= CHART_HEIGHT ? co2Value : CHART_HEIGHT),
+        (co2RawValue >= CO2_RED_ALERT) ? RED : (co2RawValue >= CO2_YELLOW_ALERT) ? YELLOW : GREEN);
   }
 }
 
@@ -338,8 +336,10 @@ void drawGeigerScreen() {
     cpsCount++
   ) {
     unsigned long cpsValue = cpm.get(cpsCount);
-    oled.fillRect(cpsCount*2, 127, 2, -56, BLACK);
-    oled.fillRect(cpsCount*2, 127, 2, -(cpsValue <= 56 ? cpsValue : 56), GREEN);
+    oled.fillRect(cpsCount*2, 127, 2,
+        -CHART_HEIGHT + (cpsValue <= CHART_HEIGHT ? cpsValue : CHART_HEIGHT), BLACK);
+    oled.fillRect(cpsCount*2, 127, 2, 
+        -(cpsValue <= CHART_HEIGHT ? cpsValue : CHART_HEIGHT), GREEN);
   }
 }
 

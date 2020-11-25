@@ -20,7 +20,9 @@
 #include <entities/WifiNetwork.h>
 
 volatile unsigned long cps = 0L;
-MovingAverage<volatile unsigned long, CYCLE_SIZE> cpm;
+MovingAverage<volatile unsigned long, GEIGER_CYCLE_SIZE> cpm;
+
+MovingAverage<volatile uint16_t, CO2_CYCLE_SIZE> co2DataCycleArray;
 
 Data data;
 struct tm timeinfo;
@@ -153,11 +155,6 @@ void setup() {
 
   handler = xQueueCreate(1, sizeof networks);
 
-  /** writeStringToEEPROM("asdfghjk", 50);
-  int length = EEPROM.read(50);
-  Serial.printf("eeprom string length %d \n", length)
-  Serial.print("read from eeprom: ");
-  Serial.println(readStringFromEEPROM(50)); */
 }
 
 void showMainScreen() {
@@ -293,6 +290,25 @@ void drawCo2Scren() {
   oled.setTextSize(1);
   
   drawMenu("[ CO2 ]");
+  
+  oled.printf("cur : %-d ppm    ", data.co2);
+  
+  for(
+    uint8_t co2measuringCounter = 0;
+    co2measuringCounter < cpm.size();
+    co2measuringCounter++
+  ) {
+    // convert real value to line height (px)
+    uint16_t co2Value = co2DataCycleArray.get(co2measuringCounter) / 89;
+    oled.fillRect(co2measuringCounter, 127, 2, -56, BLACK);
+    oled.fillRect(
+      co2measuringCounter,
+      127,
+      2,
+      -(co2Value <= 56 ? co2Value : 56),
+      GREEN
+    );
+  }
 }
 
 void drawEnableCo2Scren() {
@@ -559,7 +575,7 @@ void webServer(void * parameter) {
  * get data from bme280 and MH-Z19B sensors
 */
 void getSensorsData(void * parameter) {
-  
+  ulong pollingCounter = 0;
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
       oled.println("BME280 error :(");
   } else {
@@ -575,7 +591,12 @@ void getSensorsData(void * parameter) {
     data.temperature = bme.readTemperature();
     
     data.co2 = co2Enabled ? co2ppm() : 0; 
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    pollingCounter++;
+    // be careful
+    if ((pollingCounter * SENSOR_POLLING_INTERVAL) % CO2_STORING_INTERVAL == 0) {
+      co2DataCycleArray.push(data.co2);
+    }
+    vTaskDelay(SENSOR_POLLING_INTERVAL / portTICK_PERIOD_MS);
   }
 }
 

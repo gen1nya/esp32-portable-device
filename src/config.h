@@ -48,7 +48,12 @@
 #define EEPROM_ARRDESS_WIFI_SSID 128
 #define EEPROM_ARRDESS_WIFI_PASS EEPROM_ARRDESS_WIFI_SSID + MAX_SSID_LENGTH + 1
 
-#define CYCLE_SIZE      60
+#define GEIGER_CYCLE_SIZE 60
+
+#define CO2_CYCLE_SIZE 128
+#define CO2_STORING_INTERVAL 3000 //5min, ~10h on chart
+
+#define SENSOR_POLLING_INTERVAL 100
 
 const double CPS_TO_MECROSIVERTS_K = 151.0;
 
@@ -60,4 +65,5 @@ const char* ssid     = "dd-wrt";
 const char* password = "Elizabeth";
 
 #define WIFI_CONNECTION_TIMEOUT 20
+
 #endif

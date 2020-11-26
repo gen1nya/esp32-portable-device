@@ -41,6 +41,8 @@ bool geigerEnabled = false;
 bool wifiEnabled = false;
 
 QueueHandle_t handler;
+TaskHandle_t webServerTaskHandler;
+
 char ** networks = new char * [0];
 /**
  * Method signatures;
@@ -150,8 +152,9 @@ void setup() {
   xTaskCreate(getSensorsData,  "getSensorsData", 2500, NULL, 4, NULL);
   xTaskCreate(ui, "ui", 3000, NULL, 5, NULL);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    xTaskCreate(webServer, "webServer", 3000, NULL, 1, NULL);
+  if (wifiEnabled) {
+    oled.println("start webServer");
+    xTaskCreate(webServer, "webServer", 3000, NULL, 1, &webServerTaskHandler);
   }
 
   handler = xQueueCreate(1, sizeof networks);
@@ -539,9 +542,12 @@ void wifiSwitch(void * parameter) {
     WiFi.begin(ssid, password);  
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     wifiEnabled = true;
+    xTaskCreate(webServer, "webServer", 3000, NULL, 1, &webServerTaskHandler);
   } else {
+    vTaskDelete(webServerTaskHandler);
     wifiEnabled = false;
     WiFi.mode(WIFI_OFF);
+    
   }
   EEPROM.writeBool(EEPROM_ADDRESS_WIFI_ENABLED, wifiEnabled);
   EEPROM.commit();
@@ -563,7 +569,6 @@ void webServer(void * parameter) {
   });
 
   server.begin();
-  oled.println("http started!");
   for(;;){ 
     server.handleClient();
   }

@@ -24,7 +24,7 @@ MovingAverage<volatile unsigned long, GEIGER_CYCLE_SIZE> cpm;
 
 MovingAverage<volatile uint16_t, CO2_CYCLE_SIZE> co2DataCycleArray;
 
-Data data;
+//Data data;
 struct tm timeinfo;
 
 Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
@@ -41,6 +41,7 @@ bool geigerEnabled = false;
 bool wifiEnabled = false;
 
 QueueHandle_t handler;
+QueueHandle_t meteodataQueueHandler;
 TaskHandle_t webServerTaskHandler;
 
 char ** networks = new char * [0];
@@ -156,9 +157,7 @@ void setup() {
     oled.println("start webServer");
     xTaskCreate(webServer, "webServer", 3000, NULL, 1, &webServerTaskHandler);
   }
-
   handler = xQueueCreate(1, sizeof networks);
-
 }
 
 void showMainScreen() {
@@ -286,7 +285,7 @@ void drawWifiMenuScreen() {
   drawMenu("[ WiFi ]");
 }
 
-void drawCo2Scren() {
+void drawCo2Scren(uint16_t co2ppm) {
   drawHeader();
   
   oled.setCursor(0, 19);
@@ -295,7 +294,7 @@ void drawCo2Scren() {
   
   drawMenu("[ CO2 ]");
   
-  oled.printf("cur: %-d ppm    ", data.co2);
+  oled.printf("cur: %-d ppm    ", co2ppm);
   
   for(
     uint8_t co2measuringCounter = 0;
@@ -405,7 +404,7 @@ void drawMenuScreen() {
   drawMenu("[ main menu ]");
 }
 
-void drawMainScreen() {
+void drawMainScreen(Data meteodata) {
   drawHeader();
   oled.setTextWrap(false);
   oled.setTextSize(2);
@@ -413,12 +412,12 @@ void drawMainScreen() {
   /** print temperature */
   oled.drawBitmap(2, 19, temp_bmp, 20, 20, BLUE);
   oled.setCursor(26, 22);
-  oled.printf("%-2.1f C    ", data.temperature);
+  oled.printf("%-2.1f C    ", meteodata.temperature);
 
   /** print humidity*/
   oled.drawBitmap(0, 40, hum_bmp, 20, 20, BLUE);
   oled.setCursor(26, 42);
-  oled.printf("%-d %%    ", data.humidity);
+  oled.printf("%-d %%    ", meteodata.humidity);
   
   /** print radiation details*/
   double microsiverts = double(cpm.sum() * (60 / cpm.capacity()) / CPS_TO_MECROSIVERTS_K);
@@ -439,10 +438,10 @@ void drawMainScreen() {
   oled.setTextColor(WHITE, BLACK);
   oled.drawBitmap(2, 84, pres_bmp, 20, 20, MAGENTA);
   oled.setCursor(26, 84);
-  oled.printf("%-u mmHg    ", data.preassure);
+  oled.printf("%-u mmHg    ", meteodata.preassure);
 
   /** print CO2 ppm*/
-  int co2 = data.co2;
+  int co2 = meteodata.co2;
   if (co2 < 1000) {
     oled.setTextColor(GREEN, BLACK);
   } else if (co2 < 2000) {
@@ -468,18 +467,34 @@ void drawMainScreen() {
  * screen updater
 */
 void ui(void * parameters) {
+  Data meteoData;
+  meteodataQueueHandler = xQueueCreate(1, sizeof meteoData);
   vTaskDelay(500 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
+  
   for(;;) {
     if (prevUiState != uiState) {
       oled.fillRect(0, 18, 128, 128, BLACK);
       prevUiState = uiState;
       EEPROM.commit(); // TODO fix it
     }
+    
     switch (uiState) {
       case UiState::MAIN:
-        drawMainScreen();
+        
+        if (uxQueueMessagesWaiting(meteodataQueueHandler) != 0) {
+          portBASE_TYPE xStatus;
+          xStatus = xQueueReceive(meteodataQueueHandler, &meteoData, 0);
+          if (xStatus == pdPASS) {
+            if (DEBUG) {
+              Serial.printf("received: \n co2: %d \n hum %d \n pres %u \n temp %2.1f \n============= \n", 
+                meteoData.co2, meteoData.humidity, meteoData.preassure, meteoData.temperature
+              );      
+            }   
+          }
+        }
+        drawMainScreen(meteoData);
         break;
 
       case UiState::MENU:
@@ -514,7 +529,7 @@ void ui(void * parameters) {
         break;
 
       case UiState::CO2:
-        drawCo2Scren();
+        drawCo2Scren(meteoData.co2);
         break;
 
       case UiState::CO2_ENABLE:
@@ -587,20 +602,28 @@ void getSensorsData(void * parameter) {
       oled.println("BME280 ok");
   }
 
+  static Data mData;
   for(;;){ 
     if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
       getLocalTime(&timeinfo);
     }
-    data.humidity = bme.readHumidity();
-    data.preassure = (int) (bme.readPressure() / 133.333);
-    data.temperature = bme.readTemperature();
+    mData.humidity = bme.readHumidity();
+    mData.preassure = (int) (bme.readPressure() / 133.333);
+    mData.temperature = bme.readTemperature();
     
-    data.co2 = co2Enabled ? co2ppm() : 0; 
+    mData.co2 = co2Enabled ? co2ppm() : 0; 
     pollingCounter++;
     // be careful
     if ((pollingCounter * SENSOR_POLLING_INTERVAL) % CO2_STORING_INTERVAL == 0) {
-      co2DataCycleArray.push(data.co2);
+      co2DataCycleArray.push(mData.co2);
     }
+    xQueueSend(meteodataQueueHandler, &mData, 0);
+    if (DEBUG) {
+      Serial.printf("send: \n co2: %d \n hum %d \n pres %u \n temp %2.1f \n============= \n", 
+        mData.co2, mData.humidity, mData.preassure, mData.temperature
+      );
+    }
+    
     vTaskDelay(SENSOR_POLLING_INTERVAL / portTICK_PERIOD_MS);
   }
 }

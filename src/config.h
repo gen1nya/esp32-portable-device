@@ -60,6 +60,8 @@
 
 #define SENSOR_POLLING_INTERVAL 100
 
+#define ENABLE_BME280_DATA_FILLTER
+
 const double CPS_TO_MECROSIVERTS_K = 151.0;
 
 const char* ntpServer = "pool.ntp.org";

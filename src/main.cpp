@@ -595,6 +595,7 @@ void webServer(void * parameter) {
  * get data from bme280 and MH-Z19B sensors
 */
 void getSensorsData(void * parameter) {
+  double oldTemperature;
   ulong pollingCounter = 0;
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
       oled.println("BME280 error :(");
@@ -603,13 +604,36 @@ void getSensorsData(void * parameter) {
   }
 
   static Data mData;
+
+  mData.humidity = bme.readHumidity();
+  mData.preassure = (int) (bme.readPressure() / 133.333);
+  mData.temperature = bme.readTemperature();
+
   for(;;){ 
     if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
       getLocalTime(&timeinfo);
     }
-    mData.humidity = bme.readHumidity();
-    mData.preassure = (int) (bme.readPressure() / 133.333);
-    mData.temperature = bme.readTemperature();
+    /** prevent reading error*/
+    #ifdef ENABLE_BME280_DATA_FILLTER
+      int humidity = bme.readHumidity();
+      if (abs(humidity - mData.humidity) < 10) {
+        mData.humidity = humidity;
+      }
+      
+      uint32_t pressure = (uint32_t) (bme.readPressure() / 133.333);
+      if (abs(pressure - mData.preassure) < 100) {
+        mData.preassure = pressure;
+      }
+      
+      double temperature = bme.readTemperature();
+      if (abs(temperature - mData.temperature) < 10) {
+        mData.temperature = temperature;
+      }
+    #else
+      mData.humidity = bme.readHumidity();
+      mData.preassure = (int) (bme.readPressure() / 133.333);
+      mData.temperature = bme.readTemperature();
+    #endif
     
     mData.co2 = co2Enabled ? co2ppm() : 0; 
     pollingCounter++;

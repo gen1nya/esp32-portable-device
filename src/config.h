@@ -18,6 +18,9 @@
 #define PIN_BUTTON_UP 34
 #define PIN_BUTTON_DOWN 32
 
+#define PIN_CLK 34
+#define PIN_DT 32
+
 #define BUTTONS_DEBOUNCE 200L
 #define GEIGER_DEBOUNCE_MICROSECONDS 500L
 
@@ -60,7 +63,8 @@
 
 #define SENSOR_POLLING_INTERVAL 100
 
-#define ENABLE_BME280_DATA_FILLTER
+/** ignore incorrect data (dT > 10, dP > 100, dH > 10)*/
+#define ENABLE_BME280_DATA_FILLTER 
 
 const double CPS_TO_MECROSIVERTS_K = 151.0;
 

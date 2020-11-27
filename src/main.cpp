@@ -4,6 +4,7 @@
 #include "Adafruit_BME280.h"
 #include <libraries/CircularBuffer.h>
 #include <libraries/MovingAverage.h>
+#include "GyverEncoder.h"
 
 #include <EEPROM.h>
 #include <WiFi.h>
@@ -21,7 +22,6 @@
 
 volatile unsigned long cps = 0L;
 MovingAverage<volatile unsigned long, GEIGER_CYCLE_SIZE> cpm;
-
 MovingAverage<volatile uint16_t, CO2_CYCLE_SIZE> co2DataCycleArray;
 
 //Data data;
@@ -43,6 +43,8 @@ bool wifiEnabled = false;
 QueueHandle_t handler;
 QueueHandle_t meteodataQueueHandler;
 TaskHandle_t webServerTaskHandler;
+
+Encoder enc(PIN_CLK, PIN_DT, ENC_NO_BUTTON, TYPE2);
 
 char ** networks = new char * [0];
 /**
@@ -99,8 +101,8 @@ void setup() {
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   pinMode(PIN_ENABLE_GEIGER_COUNTER, OUTPUT);
   attachInterrupt(PIN_BUTTON_OK, buttonOkIsr, FALLING);
-  attachInterrupt(PIN_BUTTON_UP, buttonUpIsr, FALLING);
-  attachInterrupt(PIN_BUTTON_DOWN, buttonDownIsr, FALLING);
+  attachInterrupt(PIN_DT, buttonUpIsr, CHANGE);
+  attachInterrupt(PIN_CLK, buttonDownIsr, CHANGE);
 
   oled.begin();
   oled.setRotation(0);
@@ -232,7 +234,13 @@ void showEnableGeigerScreen() {
 
 
 void loop() {
- 
+  //enc.tick();
+    if (enc.isLeft() && uiState.hasMenu()) {
+      if (selectedMenuItem < menuItemsCounter - 1) selectedMenuItem++;
+    }
+    if (enc.isRight() && uiState.hasMenu()) {
+      if (selectedMenuItem > 0 ) selectedMenuItem--;
+    }
 }
 
 void drawHeader() {
@@ -613,7 +621,6 @@ void getSensorsData(void * parameter) {
     if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
       getLocalTime(&timeinfo);
     }
-    /** prevent reading error*/
     #ifdef ENABLE_BME280_DATA_FILLTER
       int humidity = bme.readHumidity();
       if (abs(humidity - mData.humidity) < 10) {
@@ -844,18 +851,21 @@ void IRAM_ATTR buttonOkIsr() {
   lastButtonInterrupt = millis();
 }
 
+
 void IRAM_ATTR buttonUpIsr() {
-  if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
+  /*if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
   if (uiState.hasMenu()) {
     if (selectedMenuItem < menuItemsCounter - 1) selectedMenuItem++;
   }
-  lastButtonInterrupt = millis();
+  lastButtonInterrupt = millis();*/
+  enc.tick();
 }
 
 void IRAM_ATTR buttonDownIsr() {
-  if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
+  /*if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
   if (selectedMenuItem > 0 ) selectedMenuItem--;
-  lastButtonInterrupt = millis();  
+  lastButtonInterrupt = millis();  */
+  enc.tick();
 }
 
 unsigned long lastGeigerInterrupt = 0;

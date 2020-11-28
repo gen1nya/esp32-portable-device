@@ -4,9 +4,9 @@
 #include <Arduino.h>
 
 struct Data {
-  double temperature = 0;
-  unsigned int preassure = 0; 
-  int humidity = 0;
+  float temperature = 0;
+  uint16_t preassure = 0; 
+  uint8_t humidity = 0;
   uint16_t co2 = 0;
 };
 

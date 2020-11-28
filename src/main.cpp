@@ -23,6 +23,9 @@
 volatile unsigned long cps = 0L;
 MovingAverage<volatile unsigned long, GEIGER_CYCLE_SIZE> cpm;
 MovingAverage<volatile uint16_t, CO2_CYCLE_SIZE> co2DataCycleArray;
+MovingAverage<volatile uint16_t, PRESSURE_CYCLE_SIZE> pressureCycleArray;
+MovingAverage<volatile float, TEMPERATURE_CYCLE_SIZE> temperatureCycleArray;
+MovingAverage<volatile uint8_t, HUMIDITY_CYCLE_SIZE> humidityCycleArray;
 
 //Data data;
 struct tm timeinfo;
@@ -78,6 +81,7 @@ void drawEnableCo2Scren(void);
 void drawWifiScannerScreen(void);
 void drawGeigerScreen(void);
 void drawEnableGeigerScreen(void);
+void drawMeteoSensorScren(Data meteoData);
 
 void showMainScreen(void);
 void showMenuScreen(void);
@@ -88,9 +92,13 @@ void showEnableCo2Scren(void);
 void showScanWifiScreen(void);
 void showGeigerScren(void);
 void showEnableGeigerScreen(void);
+void showMeteoSensorScren(void);
+
+uint8_t convertRealValueToPx(int item, int measuringCounter);
+int getMeasurmentArraySize(int item);
 
 void setup() {
-  Serial.begin(UART_BAUNDRATE);
+  //Serial.begin(UART_BAUNDRATE);
   Serial2.begin(Z19B_UART_BAUNDRATE);
   Serial.println("init");
   EEPROM.begin(EEPROM_INITIAL_SIZE);
@@ -172,9 +180,9 @@ void showMainScreen() {
 void showMenuScreen() {
   uiState = UiState::MENU;
   delete[] menuItems;
-  menuItems = new char*[4] {" <- back"," Wifi", " Geiger", " Co2"};
+  menuItems = new char*[5] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor"};
   selectedMenuItem = 0;
-  menuItemsCounter = 4;
+  menuItemsCounter = 5;
 }
 
 void showWifiScren() {
@@ -206,6 +214,14 @@ void showCo2Scren() {
   menuItems = new char*[2] {" <- back"," on/off"};
   selectedMenuItem = 0;
   menuItemsCounter = 2;
+}
+
+void showMeteoSensorScren() {
+  uiState = UiState::METEOSENSOR;
+  delete[] menuItems;
+  menuItems = new char*[4] {" <- back", " Temperature", " Pressure", " Humidity"};
+  selectedMenuItem = 1;
+  menuItemsCounter = 4;
 }
 
 void showEnableCo2Scren() {
@@ -273,6 +289,50 @@ void drawHeader() {
   oled.setTextWrap(true);
 }
 
+void drawMeteoSensorScren(Data meteoData) {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ Meteosensor data ]");
+
+  for(
+    uint8_t measuringCounter = 0;
+    measuringCounter < getMeasurmentArraySize(selectedMenuItem);
+    measuringCounter++
+  ) {
+  
+    uint8_t convertedValue = convertRealValueToPx(selectedMenuItem, measuringCounter);
+    oled.fillRect(measuringCounter, 127 - convertedValue, 1, 
+        -CHART_HEIGHT + (convertedValue <= CHART_HEIGHT ? convertedValue : CHART_HEIGHT), BLACK);
+    oled.fillRect(measuringCounter, 127, 1,
+       -(convertedValue <= CHART_HEIGHT ? convertedValue : CHART_HEIGHT), GREEN);
+  }
+}
+
+uint8_t convertRealValueToPx(int item, int measuringCounter) {
+  if (item == 2) {
+    return pressureCycleArray.get(measuringCounter) / 20;
+  } else if (item == 3) {
+    return humidityCycleArray.get(measuringCounter) / 1.9;
+  } else {
+    return temperatureCycleArray.get(measuringCounter) / 1.5;
+  }
+}
+
+int getMeasurmentArraySize(int item) {
+  if (item == 2) {
+    return pressureCycleArray.size();
+  } else if (item == 3) {
+    return humidityCycleArray.size();
+  } else {
+    return temperatureCycleArray.size();
+  }
+}
+
+
 void drawEnableWifiScreen() {
   drawHeader();
 
@@ -312,7 +372,7 @@ void drawCo2Scren(uint16_t co2ppm) {
     // convert real value to line height. 5000(max ppm) / 56 (max chart line height)
     uint16_t co2RawValue = co2DataCycleArray.get(co2measuringCounter);
     uint8_t co2Value = co2RawValue / 89;
-    oled.fillRect(co2measuringCounter, 127, 1, 
+    oled.fillRect(co2measuringCounter, 127 - co2Value, 1, 
         -CHART_HEIGHT + (co2Value <= CHART_HEIGHT ? co2Value : CHART_HEIGHT), BLACK);
     oled.fillRect(co2measuringCounter, 127, 1, -(co2Value <= CHART_HEIGHT ? co2Value : CHART_HEIGHT),
         (co2RawValue >= CO2_RED_ALERT) ? RED : (co2RawValue >= CO2_YELLOW_ALERT) ? YELLOW : GREEN);
@@ -346,7 +406,7 @@ void drawGeigerScreen() {
     cpsCount++
   ) {
     unsigned long cpsValue = cpm.get(cpsCount);
-    oled.fillRect(cpsCount*2, 127, 2,
+    oled.fillRect(cpsCount*2, 127 - cps, 2,
         -CHART_HEIGHT + (cpsValue <= CHART_HEIGHT ? cpsValue : CHART_HEIGHT), BLACK);
     oled.fillRect(cpsCount*2, 127, 2, 
         -(cpsValue <= CHART_HEIGHT ? cpsValue : CHART_HEIGHT), GREEN);
@@ -516,6 +576,10 @@ void ui(void * parameters) {
       case UiState::WIFI_ENABLE:
         drawEnableWifiScreen();
         break;
+
+      case UiState::METEOSENSOR: 
+        drawMeteoSensorScren(meteoData);
+        break;
       
       case UiState::WIFI_SCAN:
         if (uxQueueMessagesWaiting(handler) != 0) {
@@ -603,7 +667,6 @@ void webServer(void * parameter) {
  * get data from bme280 and MH-Z19B sensors
 */
 void getSensorsData(void * parameter) {
-  double oldTemperature;
   ulong pollingCounter = 0;
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
       oled.println("BME280 error :(");
@@ -622,31 +685,40 @@ void getSensorsData(void * parameter) {
       getLocalTime(&timeinfo);
     }
     #ifdef ENABLE_BME280_DATA_FILLTER
-      int humidity = bme.readHumidity();
+      uint8_t humidity = bme.readHumidity();
       if (abs(humidity - mData.humidity) < 10) {
         mData.humidity = humidity;
       }
       
-      uint32_t pressure = (uint32_t) (bme.readPressure() / 133.333);
+      uint16_t pressure = (uint16_t) (bme.readPressure() / 133.333);
       if (abs(pressure - mData.preassure) < 100) {
         mData.preassure = pressure;
       }
       
-      double temperature = bme.readTemperature();
+      float temperature = bme.readTemperature();
       if (abs(temperature - mData.temperature) < 10) {
         mData.temperature = temperature;
       }
     #else
       mData.humidity = bme.readHumidity();
-      mData.preassure = (int) (bme.readPressure() / 133.333);
+      mData.preassure = (uint16_t) (bme.readPressure() / 133.333);
       mData.temperature = bme.readTemperature();
     #endif
     
     mData.co2 = co2Enabled ? co2ppm() : 0; 
     pollingCounter++;
-    // be careful
+    // be careful with STORING_INTERVAL
     if ((pollingCounter * SENSOR_POLLING_INTERVAL) % CO2_STORING_INTERVAL == 0) {
       co2DataCycleArray.push(mData.co2);
+    }
+    if ((pollingCounter * SENSOR_POLLING_INTERVAL) % PRESSURE_STORING_INTERVAL == 0) {
+      pressureCycleArray.push(mData.preassure);
+    }
+    if ((pollingCounter * SENSOR_POLLING_INTERVAL) % TEMPERATURE_STORING_INTERVAL == 0) {
+      temperatureCycleArray.push(mData.temperature);
+    }
+    if ((pollingCounter * SENSOR_POLLING_INTERVAL) % HUMIDITY_STORING_INTERVAL == 0) {
+      humidityCycleArray.push(mData.humidity);
     }
     xQueueSend(meteodataQueueHandler, &mData, 0);
     if (DEBUG) {
@@ -737,6 +809,9 @@ void IRAM_ATTR buttonOkIsr() {
         case 3: 
           showCo2Scren();
           break;
+        case 4:
+          showMeteoSensorScren();
+          break;
         default:
           break;
       }
@@ -745,6 +820,14 @@ void IRAM_ATTR buttonOkIsr() {
     case UiState::MAIN: {
       showMenuScreen();
       break;
+    }
+    case UiState::METEOSENSOR: {
+      switch (selectedMenuItem) {
+        case 0:
+          showMainScreen();
+          break;
+        break;
+      }
     }
     case UiState::WIFI: {
       switch (selectedMenuItem) {

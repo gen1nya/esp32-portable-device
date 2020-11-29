@@ -547,21 +547,19 @@ void ui(void * parameters) {
       prevUiState = uiState;
       EEPROM.commit(); // TODO fix it
     }
+
+    if (uxQueueMessagesWaiting(meteodataQueueHandler) != 0) {
+      if (xQueueReceive(meteodataQueueHandler, &meteoData, 0) == pdPASS) {
+        if (DEBUG) {
+          Serial.printf("received: \n co2: %d \n hum %d \n pres %u \n temp %2.1f \n============= \n", 
+            meteoData.co2, meteoData.humidity, meteoData.preassure, meteoData.temperature
+          );      
+        }   
+      }
+    }
     
     switch (uiState) {
-      case UiState::MAIN:
-        
-        if (uxQueueMessagesWaiting(meteodataQueueHandler) != 0) {
-          portBASE_TYPE xStatus;
-          xStatus = xQueueReceive(meteodataQueueHandler, &meteoData, 0);
-          if (xStatus == pdPASS) {
-            if (DEBUG) {
-              Serial.printf("received: \n co2: %d \n hum %d \n pres %u \n temp %2.1f \n============= \n", 
-                meteoData.co2, meteoData.humidity, meteoData.preassure, meteoData.temperature
-              );      
-            }   
-          }
-        }
+      case UiState::MAIN:    
         drawMainScreen(meteoData);
         break;
 

@@ -6,7 +6,7 @@ class UiState {
     public:
         enum Value : uint8_t {
              MAIN, MENU, WIFI, WIFI_ENABLE, CO2, CO2_ENABLE,
-             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR };
+             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR, AUDIO };
         
         UiState() = default;
         constexpr UiState(Value aUiState) : value(aUiState) { }

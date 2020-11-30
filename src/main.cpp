@@ -83,6 +83,7 @@ void drawWifiScannerScreen(void);
 void drawGeigerScreen(void);
 void drawEnableGeigerScreen(void);
 void drawMeteoSensorScren(Data meteoData);
+void drawBtAudioScreen(void);
 
 void showMainScreen(void);
 void showMenuScreen(void);
@@ -94,6 +95,7 @@ void showScanWifiScreen(void);
 void showGeigerScren(void);
 void showEnableGeigerScreen(void);
 void showMeteoSensorScren(void);
+void showBtAudioScreen(void);
 
 uint8_t convertRealValueToPx(int item, int measuringCounter);
 int getMeasurmentArraySize(int item);
@@ -104,8 +106,8 @@ void setup() {
   Serial.println("init");
   EEPROM.begin(EEPROM_INITIAL_SIZE);
   
-  audio.begin();
-  audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
+  //audio.begin();
+  //audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
 
   pinMode(PIN_GEIGER_COUNTER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
@@ -184,9 +186,9 @@ void showMainScreen() {
 void showMenuScreen() {
   uiState = UiState::MENU;
   delete[] menuItems;
-  menuItems = new char*[5] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor"};
+  menuItems = new char*[6] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor", " Audio"};
   selectedMenuItem = 0;
-  menuItemsCounter = 5;
+  menuItemsCounter = 6;
 }
 
 void showWifiScren() {
@@ -250,6 +252,14 @@ void showEnableGeigerScreen() {
   menuItems = new char*[3] {" <- back"," Enable", " Disable"};
   menuItemsCounter = 3;
   selectedMenuItem = geigerEnabled ? 2 : 1;
+}
+
+void showBtAudioScreen() {
+  uiState = UiState::AUDIO;
+  delete[] menuItems;
+  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
+  menuItemsCounter = 3;
+  selectedMenuItem = 0;
 }
 
 
@@ -336,7 +346,6 @@ int getMeasurmentArraySize(int item) {
   }
 }
 
-
 void drawEnableWifiScreen() {
   drawHeader();
 
@@ -345,6 +354,16 @@ void drawEnableWifiScreen() {
   oled.setTextSize(1);
 
   drawMenu("[ Enable WiFi? ]");
+}
+
+void drawBtAudioScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ Bluetooth speaker ]");
 }
 
 void drawWifiMenuScreen() {
@@ -583,6 +602,10 @@ void ui(void * parameters) {
         drawMeteoSensorScren(meteoData);
         break;
       
+      case UiState::AUDIO:
+        drawBtAudioScreen();
+        break;
+
       case UiState::WIFI_SCAN:
         if (uxQueueMessagesWaiting(handler) != 0) {
           portBASE_TYPE xStatus;
@@ -640,6 +663,16 @@ void wifiSwitch(void * parameter) {
   }
   EEPROM.writeBool(EEPROM_ADDRESS_WIFI_ENABLED, wifiEnabled);
   EEPROM.commit();
+  vTaskDelete(NULL);
+}
+
+void btAudioSwitch(void * parameter) {
+  if (*((bool*) parameter)) {
+    audio.begin();
+    audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
+  } else {
+    audio.end();
+  }
   vTaskDelete(NULL);
 }
 
@@ -814,6 +847,8 @@ void IRAM_ATTR buttonOkIsr() {
         case 4:
           showMeteoSensorScren();
           break;
+        case 5: 
+          showBtAudioScreen();
         default:
           break;
       }
@@ -930,6 +965,24 @@ void IRAM_ATTR buttonOkIsr() {
           break;
       }
       showGeigerScren();
+      break;
+    }
+    case UiState::AUDIO: {
+      switch (selectedMenuItem) {
+        case 0:
+          showMenuScreen();
+          break;
+        case 1:
+          static bool stat_true = true;
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 5, NULL);
+          break;
+        case 2:
+          static bool stat_false = false;
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_false, 5, NULL);
+          break;
+        default:
+          break;
+      }
       break;
     }
   }

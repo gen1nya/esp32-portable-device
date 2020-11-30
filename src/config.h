@@ -21,6 +21,10 @@
 #define PIN_CLK 34
 #define PIN_DT 32
 
+#define PIN_I2S_DOUT 27
+#define PIN_I2S_BCLK 26
+#define PIN_I2S_LRC 25
+
 #define BUTTONS_DEBOUNCE 200L
 #define GEIGER_DEBOUNCE_MICROSECONDS 500L
 
@@ -83,6 +87,7 @@ const int   daylightOffset_sec = 3600;
 
 const char* ssid     = "dd-wrt";
 const char* password = "Elizabeth";
+const char* bluetoothName = "ESP_speaker";
 
 #define WIFI_CONNECTION_TIMEOUT 20
 

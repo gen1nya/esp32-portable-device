@@ -5,6 +5,7 @@
 #include <libraries/CircularBuffer.h>
 #include <libraries/MovingAverage.h>
 #include "GyverEncoder.h"
+#include <libraries/btAudio.h>
 
 #include <EEPROM.h>
 #include <WiFi.h>
@@ -27,9 +28,9 @@ MovingAverage<volatile uint16_t, PRESSURE_CYCLE_SIZE> pressureCycleArray;
 MovingAverage<volatile float, TEMPERATURE_CYCLE_SIZE> temperatureCycleArray;
 MovingAverage<volatile uint8_t, HUMIDITY_CYCLE_SIZE> humidityCycleArray;
 
-//Data data;
 struct tm timeinfo;
 
+btAudio audio = btAudio(bluetoothName);
 Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 Adafruit_BME280 bme;
 
@@ -103,6 +104,9 @@ void setup() {
   Serial.println("init");
   EEPROM.begin(EEPROM_INITIAL_SIZE);
   
+  audio.begin();
+  audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
+
   pinMode(PIN_GEIGER_COUNTER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);

@@ -1,4 +1,4 @@
-#include "GyverEncoder.h"
+#include "libraries/GyverEncoder.h"
 #include <Arduino.h>
 
 #if defined(PRECISE_ALGORITHM)

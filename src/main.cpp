@@ -4,7 +4,7 @@
 #include "Adafruit_BME280.h"
 #include <libraries/CircularBuffer.h>
 #include <libraries/MovingAverage.h>
-#include "GyverEncoder.h"
+#include <libraries/GyverEncoder.h>
 #include <libraries/btAudio.h>
 
 #include <EEPROM.h>

@@ -34,11 +34,8 @@ btAudio audio = btAudio(bluetoothName);
 Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 Adafruit_BME280 bme;
 
-UiState uiState = UiState::MAIN; 
-UiState prevUiState = UiState::MAIN; // for ui state changes detecting
-uint8_t menuItemsCounter = 0;
-uint8_t selectedMenuItem = 0;
-char** menuItems;
+UiState uiState = UiState(); 
+
 
 bool co2Enabled = false;
 bool geigerEnabled = false;
@@ -46,6 +43,7 @@ bool wifiEnabled = false;
 
 QueueHandle_t handler;
 QueueHandle_t meteodataQueueHandler;
+QueueHandle_t buttonClickQueueHandler;
 TaskHandle_t webServerTaskHandler;
 
 Encoder enc(PIN_CLK, PIN_DT, ENC_NO_BUTTON, TYPE2);
@@ -85,6 +83,8 @@ void drawEnableGeigerScreen(void);
 void drawMeteoSensorScren(Data meteoData);
 void drawBtAudioScreen(void);
 
+void onUiStateChanged(void);
+
 void showMainScreen(void);
 void showMenuScreen(void);
 void showWifiScren(void);
@@ -101,7 +101,7 @@ uint8_t convertRealValueToPx(int item, int measuringCounter);
 int getMeasurmentArraySize(int item);
 
 void setup() {
-  //Serial.begin(UART_BAUNDRATE);
+  Serial.begin(UART_BAUNDRATE);
   Serial2.begin(Z19B_UART_BAUNDRATE);
   Serial.println("init");
   EEPROM.begin(EEPROM_INITIAL_SIZE);
@@ -118,8 +118,11 @@ void setup() {
   attachInterrupt(PIN_DT, buttonUpIsr, CHANGE);
   attachInterrupt(PIN_CLK, buttonDownIsr, CHANGE);
 
+  uiState.setUiState(UiState::MAIN);
+
   oled.begin();
   oled.setRotation(0);
+  delay(500);
   oled.fillScreen(BLACK);
   oled.setTextColor(GREEN);
   oled.setCursor(0, 0);
@@ -176,100 +179,14 @@ void setup() {
   handler = xQueueCreate(1, sizeof networks);
 }
 
-void showMainScreen() {
-  uiState = UiState::MAIN;
-  //delete[] menuItems; // NPE
-  selectedMenuItem = 0;
-  menuItemsCounter = 0;
-}
-
-void showMenuScreen() {
-  uiState = UiState::MENU;
-  delete[] menuItems;
-  menuItems = new char*[6] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor", " Audio"};
-  selectedMenuItem = 0;
-  menuItemsCounter = 6;
-}
-
-void showWifiScren() {
-  uiState = UiState::WIFI;
-  delete[] menuItems;
-  menuItems = new char*[4] {" <- back"," on/off", " Connect", " Scanner"};
-  selectedMenuItem = 0;
-  menuItemsCounter = 4;
-}
-
-void showEnableWifiScreen() {
-  uiState = UiState::WIFI_ENABLE;
-  delete[] menuItems;
-  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
-  menuItemsCounter = 3;
-  selectedMenuItem = wifiEnabled ? 2 : 1;
-}
-
-void showScanWifiScreen() {
-  menuItemsCounter = 0;
-  selectedMenuItem = 0;
-  xTaskCreate(scanWifi, "scanWifi", 3000, NULL, 6, NULL);
-  uiState = UiState::WIFI_SCAN;
-}
-
-void showCo2Scren() {
-  uiState = UiState::CO2;
-  delete[] menuItems;
-  menuItems = new char*[2] {" <- back"," on/off"};
-  selectedMenuItem = 0;
-  menuItemsCounter = 2;
-}
-
-void showMeteoSensorScren() {
-  uiState = UiState::METEOSENSOR;
-  delete[] menuItems;
-  menuItems = new char*[4] {" <- back", " Temperature", " Pressure", " Humidity"};
-  selectedMenuItem = 1;
-  menuItemsCounter = 4;
-}
-
-void showEnableCo2Scren() {
-  uiState = UiState::CO2_ENABLE;
-  delete[] menuItems;
-  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
-  menuItemsCounter = 3;
-  selectedMenuItem = co2Enabled ? 2 : 1;
-}
-
-void showGeigerScren() {
-  uiState = UiState::GEIGER;
-  delete[] menuItems;
-  menuItems = new char*[2] {" <- back"," on/off"};
-  menuItemsCounter = 2;
-  selectedMenuItem = 0;
-}
-
-void showEnableGeigerScreen() {
-  uiState = UiState::GEIGER_ENABLE;
-  delete[] menuItems;
-  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
-  menuItemsCounter = 3;
-  selectedMenuItem = geigerEnabled ? 2 : 1;
-}
-
-void showBtAudioScreen() {
-  uiState = UiState::AUDIO;
-  delete[] menuItems;
-  menuItems = new char*[3] {" <- back"," Enable", " Disable"};
-  menuItemsCounter = 3;
-  selectedMenuItem = 0;
-}
-
 
 void loop() {
   //enc.tick();
     if (enc.isLeft() && uiState.hasMenu()) {
-      if (selectedMenuItem < menuItemsCounter - 1) selectedMenuItem++;
+      uiState.onEncoderEncrease();
     }
     if (enc.isRight() && uiState.hasMenu()) {
-      if (selectedMenuItem > 0 ) selectedMenuItem--;
+      uiState.onEncoderDecrease();
     }
 }
 
@@ -314,11 +231,11 @@ void drawMeteoSensorScren(Data meteoData) {
 
   for(
     uint8_t measuringCounter = 0;
-    measuringCounter < getMeasurmentArraySize(selectedMenuItem);
+    measuringCounter < getMeasurmentArraySize(uiState.getSelectedMenuItem());
     measuringCounter++
   ) {
   
-    uint8_t convertedValue = convertRealValueToPx(selectedMenuItem, measuringCounter);
+    uint8_t convertedValue = convertRealValueToPx(uiState.getSelectedMenuItem(), measuringCounter);
     oled.fillRect(measuringCounter, 127 - convertedValue, 1, 
         -CHART_HEIGHT + (convertedValue <= CHART_HEIGHT ? convertedValue : CHART_HEIGHT), BLACK);
     oled.fillRect(measuringCounter, 127, 1,
@@ -456,11 +373,11 @@ void drawWifiScannerScreen() {
   oled.println();
 
   for(
-    uint8_t i = (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? 0 : selectedMenuItem - ON_SCREEN_MENU_ITEMS + 1; 
-    (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < menuItemsCounter) : i <= selectedMenuItem; 
+    uint8_t i = (uiState.getSelectedMenuItem() < ON_SCREEN_MENU_ITEMS) ? 0 : uiState.getSelectedMenuItem() - ON_SCREEN_MENU_ITEMS + 1; 
+    (uiState.getSelectedMenuItem() < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < uiState.getMenuItemsCounter()) : i <= uiState.getSelectedMenuItem(); 
     i++
   ) {
-    oled.print((i == selectedMenuItem) ?"[*]" : "[ ]");
+    oled.print((i == uiState.getSelectedMenuItem()) ?"[*]" : "[ ]");
     if (i == 0) {
       oled.printf(" %-17s\n", "<- back");
       continue;
@@ -473,14 +390,14 @@ void drawWifiScannerScreen() {
 void drawMenu(char title[]) {
   oled.println(title);
   oled.println();
-
+  char ** menu = uiState.getMenu();
   for(
-    uint8_t i = (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? 0 : selectedMenuItem - ON_SCREEN_MENU_ITEMS + 1; 
-    (selectedMenuItem < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < menuItemsCounter) : i <= selectedMenuItem; 
+    uint8_t i = (uiState.getSelectedMenuItem() < ON_SCREEN_MENU_ITEMS) ? 0 : uiState.getSelectedMenuItem() - ON_SCREEN_MENU_ITEMS + 1; 
+    (uiState.getSelectedMenuItem() < ON_SCREEN_MENU_ITEMS) ? (i < ON_SCREEN_MENU_ITEMS) && (i < uiState.getMenuItemsCounter()) : i <= uiState.getSelectedMenuItem(); 
     i++
   ) {
-    oled.print((i == selectedMenuItem) ?"[*]" : "[ ]");
-    oled.printf(" %-17s\n", (menuItems[i]));
+    oled.print((i == uiState.getSelectedMenuItem()) ?"[*]" : "[ ]");
+    oled.printf(" %-17s\n", (menu[i]));
   }
   oled.printf("%-21s","");
 }
@@ -552,6 +469,11 @@ void drawMainScreen(Data meteodata) {
   oled.println(&timeinfo, "  %a, %d.%m.%Y" );*/
 }
 
+void onUiStateChanged() {
+    oled.fillRect(0, 18, 128, 128, BLACK);
+    EEPROM.commit(); // TODO fix it
+}
+
 /**
  * FreeRTOS task
  * 
@@ -559,18 +481,16 @@ void drawMainScreen(Data meteodata) {
 */
 void ui(void * parameters) {
   Data meteoData;
+  uint8_t shit = 0;
   meteodataQueueHandler = xQueueCreate(1, sizeof meteoData);
+  buttonClickQueueHandler = xQueueCreate(1, 1);
   vTaskDelay(500 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
+
+  uiState.setOnStateChangeListener(onUiStateChanged);
   
   for(;;) {
-    if (prevUiState != uiState) {
-      oled.fillRect(0, 18, 128, 128, BLACK);
-      prevUiState = uiState;
-      EEPROM.commit(); // TODO fix it
-    }
-
     if (uxQueueMessagesWaiting(meteodataQueueHandler) != 0) {
       if (xQueueReceive(meteodataQueueHandler, &meteoData, 0) == pdPASS) {
         if (DEBUG) {
@@ -580,8 +500,14 @@ void ui(void * parameters) {
         }   
       }
     }
+    if (uxQueueMessagesWaiting(buttonClickQueueHandler) != 0) {
+      if (xQueueReceive(buttonClickQueueHandler, &shit, 0) == pdPASS) {
+        uiState.onButtonPressed();
+      }
+    }
     
-    switch (uiState) {
+    
+    switch (uiState.getCurrent()) {
       case UiState::MAIN:    
         drawMainScreen(meteoData);
         break;
@@ -614,13 +540,13 @@ void ui(void * parameters) {
           if (xStatus == pdPASS) {
             if (DEBUG) {
               Serial.println("received:");
-              for (uint8_t i = 0; i < menuItemsCounter - 1; i++) {
+              for (uint8_t i = 0; i < uiState.getMenuItemsCounter() - 1; i++) {
                 Serial.println(networks[i]);
               }
             }   
-          } else {
+          } /*else {
             menuItemsCounter = 1;
-          }
+          }*/
         }
         drawWifiScannerScreen();
         break;
@@ -819,7 +745,7 @@ void scanWifi(void * parameter) {
     WiFi.mode(WIFI_OFF);
   }
   
-  menuItemsCounter = scanResult + 1;
+  uiState.setMenuItemCounter(scanResult + 1);
   vTaskDelete(NULL);
 }
 
@@ -828,100 +754,28 @@ unsigned long lastButtonInterrupt = 0;
 
 void IRAM_ATTR buttonOkIsr() {
   if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
-  prevUiState = uiState;
-  switch (uiState) {
-    case UiState::MENU: {
-      switch (selectedMenuItem) {
-        case 0:
-          showMainScreen();
-          break;
-        case 1:
-          showWifiScren();
-          break;
-        case 2: 
-          showGeigerScren();
-          break;
-        case 3: 
-          showCo2Scren();
-          break;
-        case 4:
-          showMeteoSensorScren();
-          break;
-        case 5: 
-          showBtAudioScreen();
-        default:
-          break;
-      }
-      break;
-    }
-    case UiState::MAIN: {
-      showMenuScreen();
-      break;
-    }
-    case UiState::METEOSENSOR: {
-      switch (selectedMenuItem) {
-        case 0:
-          showMainScreen();
-          break;
-        break;
-      }
-    }
-    case UiState::WIFI: {
-      switch (selectedMenuItem) {
-        case 0:
-          showMenuScreen();
-          break;
-        case 1: 
-          showEnableWifiScreen();
-          break;
-        case 3:
-          showScanWifiScreen();
-        default:
-          break;
-      }
-      break;
-    }
-    case UiState::WIFI_ENABLE: {
-      switch (selectedMenuItem) {
-        case 0:
-          break;
-        case 1:
-          static bool stat_true = true;
-          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);
-          break;
-        case 2:
-          static bool stat_false = false;
-          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_false, 5, NULL);
-        default:
-          break;
-      }
-      showWifiScren();
-      break;
-    }
-    case UiState::WIFI_SCAN: {
-      switch (selectedMenuItem) {
-        case 0: {
-          showWifiScren();
-          break;
-        }
-        default:
-          break;
-      }
-      break;
-    }
-    case UiState::CO2: {
-      switch (selectedMenuItem) {
-      case 0:
-        showMenuScreen();
-        break;
+  uint8_t s = 0;
+  xQueueSend(buttonClickQueueHandler, &s, 0);
+
+  switch (uiState.getCurrent()) {
+  case UiState::WIFI_ENABLE:
+    switch(uiState.getSelectedMenuItem()) {
+
       case 1: 
-        showEnableCo2Scren();
+        static bool stat_true = true;
+        xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);
         break;
-      }
-      break;
+
+      case 2: 
+        static bool stat_false = false;
+        xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_false, 5, NULL);
+        break;
+      default:
+        break;
     }
+      break;
     case UiState::CO2_ENABLE: {
-      switch (selectedMenuItem) {
+      switch (uiState.getSelectedMenuItem()) {
         case 1:
           EEPROM.writeBool(EEPROM_ADDRESS_CO2_ENABLED, true);
           co2Enabled = true;
@@ -933,45 +787,39 @@ void IRAM_ATTR buttonOkIsr() {
         default:
           break;
       }
-      showCo2Scren();
-      break;
-    }
-    case UiState::GEIGER: {
-      switch (selectedMenuItem) {
-      case 0:
-        showMenuScreen();
-        break;
-      case 1: 
-        showEnableGeigerScreen();
-        break;
-      }
       break;
     }
     case UiState::GEIGER_ENABLE: {
-      switch (selectedMenuItem) {
-        case 1:
-          EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, true);
-          geigerEnabled = true;
-          digitalWrite(PIN_ENABLE_GEIGER_COUNTER, HIGH);
-          attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
+      switch (uiState.getSelectedMenuItem()) {
+          case 1:
+            EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, true);
+            geigerEnabled = true;
+            digitalWrite(PIN_ENABLE_GEIGER_COUNTER, HIGH);
+            attachInterrupt(PIN_GEIGER_COUNTER, geigerCounterIsr, FALLING);
+            break;
+          case 2:
+            EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, false);
+            geigerEnabled = false;
+            digitalWrite(PIN_ENABLE_GEIGER_COUNTER, LOW);
+            detachInterrupt(PIN_GEIGER_COUNTER);
+            break;
+          default:
+            break;
+      }
+      break;
+    }
+    case UiState::WIFI: {
+      switch(uiState.getSelectedMenuItem()){
+        case 3:
+          xTaskCreate(scanWifi, "scanWifi", 3000, NULL, 6, NULL);
           break;
-        case 2:
-          EEPROM.writeBool(EEPROM_ADDRESS_GEIGER_ENABLED, false);
-          geigerEnabled = false;
-          digitalWrite(PIN_ENABLE_GEIGER_COUNTER, LOW);
-          detachInterrupt(PIN_GEIGER_COUNTER);
-          break;
-        default:
+        default: 
           break;
       }
-      showGeigerScren();
       break;
     }
     case UiState::AUDIO: {
-      switch (selectedMenuItem) {
-        case 0:
-          showMenuScreen();
-          break;
+      switch (uiState.getSelectedMenuItem()) {
         case 1:
           static bool stat_true = true;
           xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 5, NULL);
@@ -979,30 +827,24 @@ void IRAM_ATTR buttonOkIsr() {
         case 2:
           static bool stat_false = false;
           xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_false, 5, NULL);
-          break;
-        default:
+        break;
+          default:
           break;
       }
       break;
     }
+    default:
+      break;
   }
+  
   lastButtonInterrupt = millis();
 }
 
-
 void IRAM_ATTR buttonUpIsr() {
-  /*if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
-  if (uiState.hasMenu()) {
-    if (selectedMenuItem < menuItemsCounter - 1) selectedMenuItem++;
-  }
-  lastButtonInterrupt = millis();*/
   enc.tick();
 }
 
 void IRAM_ATTR buttonDownIsr() {
-  /*if (millis() - lastButtonInterrupt < BUTTONS_DEBOUNCE) return;
-  if (selectedMenuItem > 0 ) selectedMenuItem--;
-  lastButtonInterrupt = millis();  */
   enc.tick();
 }
 

@@ -1,5 +1,6 @@
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1351.h"
+#include <Adafruit_ST7735.h>
 #include "Adafruit_Sensor.h"
 #include "Adafruit_BME280.h"
 #include <libraries/CircularBuffer.h>
@@ -31,7 +32,8 @@ MovingAverage<volatile uint8_t, HUMIDITY_CYCLE_SIZE> humidityCycleArray;
 struct tm timeinfo;
 
 btAudio audio = btAudio(bluetoothName);
-Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
+Adafruit_ST7735 oled = Adafruit_ST7735(CS_PIN, DC_PIN, RST_PIN);
+//Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 Adafruit_BME280 bme;
 
 UiState uiState = UiState(); 
@@ -120,8 +122,9 @@ void setup() {
 
   uiState.setUiState(UiState::MAIN);
 
-  oled.begin();
-  oled.setRotation(0);
+  //oled.begin();
+  oled.initR(INITR_144GREENTAB); // Init ST7735R chip, green tab
+  oled.setRotation(1);
   delay(500);
   oled.fillScreen(BLACK);
   oled.setTextColor(GREEN);

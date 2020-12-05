@@ -11,6 +11,7 @@
 #define DC_PIN   2
 #define CS_PIN   15
 #define RST_PIN  4
+#define PIN_SDCARD_CS 19
 #define PIN_GEIGER_COUNTER 14
 #define PIN_ENABLE_GEIGER_COUNTER 5
 

@@ -6,7 +6,7 @@ class UiState {
     public:
         enum Value : uint8_t {
              MAIN, MENU, WIFI, WIFI_ENABLE, CO2, CO2_ENABLE,
-             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR, AUDIO };
+             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR, AUDIO, BT_AUDIO, SD_CARD_AUDIO };
         
         //operator Value() const { return value; }
         //explicit operator bool() = delete;
@@ -66,7 +66,7 @@ class UiState {
                             showMeteoSensorScren();
                             break;
                         case 5: 
-                            showBtAudioScreen();
+                            showAudioScreen();
                             break;
                         default:
                             break;
@@ -147,14 +147,40 @@ class UiState {
                     break;
                 }
                 case UiState::AUDIO: {
-                switch (selectedMenuItem) {
-                    case 0:
-                        showMenuScreen();
-                        break;
-                    default:
-                        break;
-                }
+                    switch (selectedMenuItem) {
+                        case 0:
+                            showMenuScreen();
+                            break;
+                        case 1: 
+                            showBtAudioScreen();
+                            break;
+                        case 2:
+                            showSdAudioScreen();
+                            break;
+                        default:
+                            break;
+                    }
                 break;
+                }
+                case BT_AUDIO: {
+                    switch (selectedMenuItem) {
+                        case 0:
+                            showAudioScreen();
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                } 
+                case SD_CARD_AUDIO: {
+                    switch (selectedMenuItem) {
+                        case 0:
+                            showAudioScreen();
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
                 }
             }
             if (onUiStasteChanged) {
@@ -247,9 +273,25 @@ class UiState {
         }
 
         void showBtAudioScreen() {
-            value = AUDIO;
+            value = BT_AUDIO;
             delete[] menuItems;
             menuItems = new char*[3] {" <- back"," Enable", " Disable"};
+            menuItemsCounter = 3;
+            selectedMenuItem = 0;
+        }
+
+        void showSdAudioScreen() {
+            value = SD_CARD_AUDIO;
+            delete[] menuItems;
+            menuItems = new char*[2] {" <- back"," Play"};
+            menuItemsCounter = 2;
+            selectedMenuItem = 0;
+        }
+
+        void showAudioScreen() {
+            value = AUDIO;
+            delete[] menuItems;
+            menuItems = new char*[3] {" <- back"," Bluetooth", " Sdcard"};
             menuItemsCounter = 3;
             selectedMenuItem = 0;
         }

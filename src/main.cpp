@@ -1,26 +1,4 @@
-#include "Adafruit_GFX.h"
-#include "Adafruit_SSD1351.h"
-#include <Adafruit_ST7735.h>
-#include "Adafruit_Sensor.h"
-#include "Adafruit_BME280.h"
-#include <libraries/CircularBuffer.h>
-#include <libraries/MovingAverage.h>
-#include <libraries/GyverEncoder.h>
-#include <libraries/btAudio.h>
-
-#include <EEPROM.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <SPI.h>
-#include <string> 
-#include "time.h"
-
-#include <config.h>
-#include <icons.h>
-#include <utils.h>
-#include <entities/MeteoData.h>
-#include <entities/UiState.h>
-#include <entities/WifiNetwork.h>
+#include <main.h>
 
 volatile unsigned long cps = 0L;
 MovingAverage<volatile unsigned long, GEIGER_CYCLE_SIZE> cpm;
@@ -31,13 +9,11 @@ MovingAverage<volatile uint8_t, HUMIDITY_CYCLE_SIZE> humidityCycleArray;
 
 struct tm timeinfo;
 
-btAudio audio = btAudio(bluetoothName);
 Adafruit_ST7735 oled = Adafruit_ST7735(CS_PIN, DC_PIN, RST_PIN);
 //Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 Adafruit_BME280 bme;
 
 UiState uiState = UiState(); 
-
 
 bool co2Enabled = false;
 bool geigerEnabled = false;
@@ -51,56 +27,6 @@ TaskHandle_t webServerTaskHandler;
 Encoder enc(PIN_CLK, PIN_DT, ENC_NO_BUTTON, TYPE2);
 
 char ** networks = new char * [0];
-/**
- * Method signatures;
- * */
-int co2ppm(void);
-
-// interrupts
-void geigerCounterIsr(void);
-void buttonOkIsr(void);
-void buttonUpIsr(void);
-void buttonDownIsr(void);
-
-// RTOS tasks
-void cpsUpdater(void * parameter);
-void getSensorsData(void * parameter);
-void ui(void * parameter);
-void webServer(void * parameter);
-void scanWifi(void * parameter);
-void wifiSwitch(void * parameter);
-
-// ui methods
-void drawHeader(void);
-void drawMenu(char title[]);
-void drawMainScreen(void);
-void drawMenuScreen(void);
-void drawWifiMenuScreen(void);
-void drawEnableWifiScreen(void);
-void drawCo2Scren(void);
-void drawEnableCo2Scren(void);
-void drawWifiScannerScreen(void);
-void drawGeigerScreen(void);
-void drawEnableGeigerScreen(void);
-void drawMeteoSensorScren(Data meteoData);
-void drawBtAudioScreen(void);
-
-void onUiStateChanged(void);
-
-void showMainScreen(void);
-void showMenuScreen(void);
-void showWifiScren(void);
-void showEnableWifiScreen(void);
-void showCo2Scren(void);
-void showEnableCo2Scren(void);
-void showScanWifiScreen(void);
-void showGeigerScren(void);
-void showEnableGeigerScreen(void);
-void showMeteoSensorScren(void);
-void showBtAudioScreen(void);
-
-uint8_t convertRealValueToPx(int item, int measuringCounter);
-int getMeasurmentArraySize(int item);
 
 void setup() {
   Serial.begin(UART_BAUNDRATE);
@@ -172,7 +98,7 @@ void setup() {
   }
   
   xTaskCreate(cpsUpdater, "cpsUpdater", 1000, NULL, 2, NULL );
-  xTaskCreate(getSensorsData,  "getSensorsData", 2500, NULL, 4, NULL);
+  xTaskCreate(getSensorsData,  "getSensorsData", 1500, NULL, 2, NULL);
   xTaskCreate(ui, "ui", 3000, NULL, 5, NULL);
 
   if (wifiEnabled) {
@@ -276,6 +202,16 @@ void drawEnableWifiScreen() {
   drawMenu("[ Enable WiFi? ]");
 }
 
+void drawAudioScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ Audio ]");
+}
+
 void drawBtAudioScreen() {
   drawHeader();
 
@@ -284,6 +220,16 @@ void drawBtAudioScreen() {
   oled.setTextSize(1);
 
   drawMenu("[ Bluetooth speaker ]");
+}
+
+void drawSdCardAudioScreen() {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ SD card ]");
 }
 
 void drawWifiMenuScreen() {
@@ -532,7 +478,15 @@ void ui(void * parameters) {
         break;
       
       case UiState::AUDIO:
+        drawAudioScreen();
+        break;
+
+      case UiState::BT_AUDIO:
         drawBtAudioScreen();
+        break;
+
+      case UiState::SD_CARD_AUDIO:
+        drawSdCardAudioScreen();
         break;
 
       case UiState::WIFI_SCAN:
@@ -595,14 +549,36 @@ void wifiSwitch(void * parameter) {
   vTaskDelete(NULL);
 }
 
+btAudio bluetoothAudio = btAudio(bluetoothName);
 void btAudioSwitch(void * parameter) {
   if (*((bool*) parameter)) {
-    audio.begin();
-    audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
+    bluetoothAudio.begin();
+    bluetoothAudio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
   } else {
-    audio.end();
+    bluetoothAudio.end();
   }
   vTaskDelete(NULL);
+}
+
+/**
+ * FreeRTOS task
+ * 
+ * mp3 player
+*/
+void audioPlayer(void * parameter) {
+  Audio audio;
+  if (SD.begin(PIN_SDCARD_CS)) {
+    Serial.println("card initialized.");
+  } else {
+    Serial.println("Card failed, or not present"); 
+    vTaskDelete(NULL);
+  }
+  audio.setPinout(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT);
+  audio.setVolume(15);
+  audio.connecttoFS(SD,"/MONOGATARI_BB.mp3");
+  for(;;) {
+    audio.loop();
+  }
 }
 
 /**
@@ -821,17 +797,27 @@ void IRAM_ATTR buttonOkIsr() {
       }
       break;
     }
-    case UiState::AUDIO: {
+    case UiState::BT_AUDIO: {
       switch (uiState.getSelectedMenuItem()) {
         case 1:
           static bool stat_true = true;
-          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 5, NULL);
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 1, NULL);
           break;
         case 2:
           static bool stat_false = false;
-          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_false, 5, NULL);
-        break;
-          default:
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 1000, (void*)&stat_false, 1, NULL);
+          break;
+        default:
+          break;
+      }
+      break;
+    }
+    case UiState::SD_CARD_AUDIO: {
+      switch (uiState.getSelectedMenuItem()) {
+        case 1:
+          xTaskCreate(audioPlayer, "audioPlayer", 12000, NULL, 1, NULL);
+          break;
+        default:
           break;
       }
       break;

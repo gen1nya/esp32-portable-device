@@ -575,9 +575,10 @@ void audioPlayer(void * parameter) {
   }
   audio.setPinout(PIN_I2S_BCLK, PIN_I2S_LRC, PIN_I2S_DOUT);
   audio.setVolume(15);
-  audio.connecttoFS(SD,"/MONOGATARI_BB.mp3");
+  audio.connecttoFS(SD,"/1.mp3");
   for(;;) {
     audio.loop();
+    vTaskDelay(1);
   }
 }
 
@@ -815,7 +816,7 @@ void IRAM_ATTR buttonOkIsr() {
     case UiState::SD_CARD_AUDIO: {
       switch (uiState.getSelectedMenuItem()) {
         case 1:
-          xTaskCreate(audioPlayer, "audioPlayer", 12000, NULL, 1, NULL);
+          xTaskCreate(audioPlayer, "audioPlayer", 12000, NULL, 5, NULL);
           break;
         default:
           break;

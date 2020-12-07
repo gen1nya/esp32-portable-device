@@ -6,11 +6,11 @@
 
 #define DEBUG 0
 
-#define SCLK_PIN 18
-#define MOSI_PIN 23
-#define MISO_PIN 19
-#define DC_PIN   2
-#define CS_PIN   15
+#define PIN_SCLK 18
+#define PIN_MOSI 23
+#define PIN_MISO 19
+#define PIN_DC   2
+#define PIN_CS   15
 #define RST_PIN  4
 #define PIN_SDCARD_CS 5
 #define PIN_GEIGER_COUNTER 14

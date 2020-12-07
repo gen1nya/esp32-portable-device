@@ -9,8 +9,8 @@ MovingAverage<volatile uint8_t, HUMIDITY_CYCLE_SIZE> humidityCycleArray;
 
 struct tm timeinfo;
 
-Adafruit_ST7735 oled = Adafruit_ST7735(CS_PIN, DC_PIN, RST_PIN);
-//Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
+Adafruit_ST7735 oled = Adafruit_ST7735(PIN_CS, PIN_DC, RST_PIN);
+//Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, PIN_CS, PIN_DC, RST_PIN);
 Adafruit_BME280 bme;
 
 UiState uiState = UiState(); 
@@ -19,7 +19,7 @@ bool co2Enabled = false;
 bool geigerEnabled = false;
 bool wifiEnabled = false;
 
-QueueHandle_t handler;
+QueueHandle_t networkListQueueHandler;
 QueueHandle_t meteodataQueueHandler;
 QueueHandle_t buttonClickQueueHandler;
 TaskHandle_t webServerTaskHandler;
@@ -105,7 +105,7 @@ void setup() {
     oled.println("start webServer");
     xTaskCreate(webServer, "webServer", 3000, NULL, 1, &webServerTaskHandler);
   }
-  handler = xQueueCreate(1, sizeof networks);
+  networkListQueueHandler = xQueueCreate(1, sizeof networks);
 }
 
 
@@ -490,10 +490,10 @@ void ui(void * parameters) {
         break;
 
       case UiState::WIFI_SCAN:
-        if (uxQueueMessagesWaiting(handler) != 0) {
+        if (uxQueueMessagesWaiting(networkListQueueHandler) != 0) {
           portBASE_TYPE xStatus;
           delete [] networks;
-          xStatus = xQueueReceive(handler, &networks, 0);
+          xStatus = xQueueReceive(networkListQueueHandler, &networks, 0);
           if (xStatus == pdPASS) {
             if (DEBUG) {
               Serial.println("received:");
@@ -718,7 +718,7 @@ void scanWifi(void * parameter) {
     data[networkCounter] = new char[ssid.length()];
     strcpy(data[networkCounter], ssid.c_str());
   }
-  xQueueSend(handler, &data, 0);
+  xQueueSend(networkListQueueHandler, &data, 0);
   if (wifiEnabled) {
     WiFi.begin(ssid, password);
   } else {

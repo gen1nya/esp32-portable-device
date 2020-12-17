@@ -6,6 +6,7 @@
 #include <Adafruit_ST7735.h>
 #include "Adafruit_Sensor.h"
 #include "Adafruit_BME280.h"
+#include <TinyGPS++.h>
 #include <libraries/CircularBuffer.h>
 #include <libraries/MovingAverage.h>
 #include <libraries/GyverEncoder.h>
@@ -14,6 +15,8 @@
 #include <EEPROM.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <Arduino.h>
+#include <SoftwareSerial.h>
 #include <SPI.h>
 #include <string> 
 #include "time.h"

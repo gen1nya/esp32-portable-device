@@ -802,11 +802,11 @@ void IRAM_ATTR buttonOkIsr() {
       switch (uiState.getSelectedMenuItem()) {
         case 1:
           static bool stat_true = true;
-          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 1, NULL);
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 10000, (void*)&stat_true, 5, NULL);
           break;
         case 2:
           static bool stat_false = false;
-          xTaskCreate(btAudioSwitch, "btAudioSwitch", 1000, (void*)&stat_false, 1, NULL);
+          xTaskCreate(btAudioSwitch, "btAudioSwitch", 1000, (void*)&stat_false, 5, NULL);
           break;
         default:
           break;

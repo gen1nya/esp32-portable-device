@@ -23,6 +23,9 @@
 #define PIN_CLK 34
 #define PIN_DT 32
 
+#define PIN_GPS_RX 33
+#define PIN_GPS_TX 12
+
 #define PIN_I2S_DOUT 27
 #define PIN_I2S_BCLK 26
 #define PIN_I2S_LRC 25

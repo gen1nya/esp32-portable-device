@@ -15,10 +15,9 @@
 #include <EEPROM.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <SPI.h>
-#include <string> 
+#include <string>
 #include "time.h"
 #include "Audio.h"
 #include "SD.h"

@@ -12,6 +12,8 @@ struct tm timeinfo;
 Adafruit_ST7735 oled = Adafruit_ST7735(PIN_CS, PIN_DC, RST_PIN);
 //Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, PIN_CS, PIN_DC, RST_PIN);
 Adafruit_BME280 bme;
+TinyGPSPlus gps;
+SoftwareSerial gpsSerial(PIN_GPS_RX, PIN_GPS_TX);
 
 UiState uiState = UiState(); 
 

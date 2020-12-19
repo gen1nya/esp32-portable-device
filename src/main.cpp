@@ -332,16 +332,15 @@ void drawGpsScreen(TinyGPSPlus gps) {
     oled.println(F("NO LOCATION"));
   }
   if (gps.date.isValid()) {
-    oled.printf("%02d/%02d/%04d", gps.date.day(), gps.date.month(), gps.date.year());
+    oled.printf("%02d/%02d/%04d\n", gps.date.day(), gps.date.month(), gps.date.year());
   } else {
     oled.println(F("NO DATE"));
   }
   if (gps.time.isValid()) {
-    oled.printf("%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+    oled.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
   } else {
     oled.println(F("NO TIME"));
   }
-
 }
 
 void drawWifiScannerScreen() {
@@ -650,6 +649,7 @@ void webServer(void * parameter) {
 */
 void getGPSData(void * parameter) {
   TinyGPSPlus gps;
+  gpsSerial.begin(GPS_UART_BAUDRATE);
   for(;;) {
     while (gpsSerial.available() > 0)
     if (gps.encode(gpsSerial.read())) {
@@ -807,7 +807,6 @@ void IRAM_ATTR buttonOkIsr() {
       break;
     case UiState::WIFI_ENABLE:
       switch(uiState.getSelectedMenuItem()) {
-
         case 1: 
           static bool stat_true = true;
           xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);

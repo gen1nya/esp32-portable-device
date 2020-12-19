@@ -3,6 +3,7 @@
 
 #define UART_BAUNDRATE 9600
 #define Z19B_UART_BAUNDRATE 9600
+#define GPS_UART_BAUDRATE 9600
 
 #define DEBUG 0
 

@@ -49,6 +49,7 @@ void webServer(void * parameter);
 void scanWifi(void * parameter);
 void wifiSwitch(void * parameter);
 void audioPlayer(void * parameter);
+void getGPSData(void * parameter);
 
 // ui methods
 void drawHeader(void);

@@ -12,7 +12,6 @@ struct tm timeinfo;
 Adafruit_ST7735 oled = Adafruit_ST7735(PIN_CS, PIN_DC, RST_PIN);
 //Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, PIN_CS, PIN_DC, RST_PIN);
 Adafruit_BME280 bme;
-TinyGPSPlus gps;
 SoftwareSerial gpsSerial(PIN_GPS_RX, PIN_GPS_TX);
 
 UiState uiState = UiState(); 
@@ -39,9 +38,6 @@ void setup() {
   Serial.println("init");
   EEPROM.begin(EEPROM_INITIAL_SIZE);
   
-  //audio.begin();
-  //audio.I2S(PIN_I2S_BCLK, PIN_I2S_DOUT, PIN_I2S_LRC);
-
   pinMode(PIN_GEIGER_COUNTER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
   pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
@@ -115,13 +111,12 @@ void setup() {
 
 
 void loop() {
-  //enc.tick();
-    if (enc.isLeft() && uiState.hasMenu()) {
-      uiState.onEncoderEncrease();
-    }
-    if (enc.isRight() && uiState.hasMenu()) {
-      uiState.onEncoderDecrease();
-    }
+  if (enc.isLeft() && uiState.hasMenu()) {
+    uiState.onEncoderEncrease();
+  }
+  if (enc.isRight() && uiState.hasMenu()) {
+    uiState.onEncoderDecrease();
+  }
 }
 
 void drawHeader() {
@@ -445,8 +440,6 @@ void drawMainScreen(Data meteodata) {
   oled.setTextSize(1);
   oled.setTextColor(WHITE, BLACK);
   oled.setTextWrap(true);
-  /*oled.printf(" %02d:%02d:%02d \n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-  oled.println(&timeinfo, "  %a, %d.%m.%Y" );*/
 }
 
 void onUiStateChanged() {
@@ -537,9 +530,7 @@ void ui(void * parameters) {
                 Serial.println(networks[i]);
               }
             }   
-          } /*else {
-            menuItemsCounter = 1;
-          }*/
+          }
         }
         drawWifiScannerScreen();
         break;
@@ -650,12 +641,15 @@ void webServer(void * parameter) {
 void getGPSData(void * parameter) {
   TinyGPSPlus gps;
   gpsSerial.begin(GPS_UART_BAUDRATE);
+  gpsSerial.flush();
   for(;;) {
-    while (gpsSerial.available() > 0)
-    if (gps.encode(gpsSerial.read())) {
-      xQueueSend(gpsDataQueueHandler, &gps, 1);
+    while (gpsSerial.available() > 0) {
+      if (gps.encode(gpsSerial.read())) {
+        xQueueSend(gpsDataQueueHandler, &gps, 1);
+        Serial.println(gps.location.lat(), 6);
+        Serial.println(gps.location.lng(), 6);;
+      }
     }
-    
     vTaskDelay(1000);
   }
 }

@@ -6,7 +6,8 @@ class UiState {
     public:
         enum Value : uint8_t {
              MAIN, MENU, WIFI, WIFI_ENABLE, CO2, CO2_ENABLE,
-             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR, AUDIO, BT_AUDIO, SD_CARD_AUDIO };
+             WIFI_SCAN, GEIGER, GEIGER_ENABLE, METEOSENSOR, AUDIO, 
+             BT_AUDIO, SD_CARD_AUDIO, GPS };
         
         //operator Value() const { return value; }
         //explicit operator bool() = delete;
@@ -67,6 +68,9 @@ class UiState {
                             break;
                         case 5: 
                             showAudioScreen();
+                            break;
+                        case 6: 
+                            showGpsScreen();
                             break;
                         default:
                             break;
@@ -182,6 +186,16 @@ class UiState {
                     }
                     break;
                 }
+                case GPS: {
+                    switch (selectedMenuItem) {
+                        case 0:
+                            showMenuScreen();
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+                }
             }
             if (onUiStasteChanged) {
                 onUiStasteChanged();
@@ -202,12 +216,20 @@ class UiState {
             menuItemsCounter = 0;
         }
 
+        void showGpsScreen() {
+            value = GPS;
+            delete[] menuItems;
+            menuItems = new char*[1] {" <- back"};
+            selectedMenuItem = 0;
+            menuItemsCounter = 1;
+        }
+
         void showMenuScreen() {
             value = MENU;
             delete[] menuItems;
-            menuItems = new char*[6] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor", " Audio"};
+            menuItems = new char*[7] {" <- back"," Wifi", " Geiger", " Co2", " Meteo sensor", " Audio", " GPS"};
             selectedMenuItem = 0;
-            menuItemsCounter = 6;
+            menuItemsCounter = 7;
         }
 
         void showWifiScren() {

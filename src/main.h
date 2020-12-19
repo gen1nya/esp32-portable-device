@@ -66,22 +66,9 @@ void drawMeteoSensorScren(Data meteoData);
 void drawAudioScreen(void);
 void drawBtAudioScreen(void);
 void drawSdCardAudioScreen(void);
+void drawGpsScreen(TinyGPSPlus gps);
 
 void onUiStateChanged(void);
-
-void showMainScreen(void);
-void showMenuScreen(void);
-void showWifiScren(void);
-void showEnableWifiScreen(void);
-void showCo2Scren(void);
-void showEnableCo2Scren(void);
-void showScanWifiScreen(void);
-void showGeigerScren(void);
-void showEnableGeigerScreen(void);
-void showMeteoSensorScren(void);
-void showAudioScreen(void);
-void showBtAudioScreen(void);
-void showSdAudioScreen(void);
 
 uint8_t convertRealValueToPx(int item, int measuringCounter);
 int getMeasurmentArraySize(int item);

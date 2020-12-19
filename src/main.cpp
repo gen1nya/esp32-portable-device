@@ -24,7 +24,10 @@ bool wifiEnabled = false;
 QueueHandle_t networkListQueueHandler;
 QueueHandle_t meteodataQueueHandler;
 QueueHandle_t buttonClickQueueHandler;
+QueueHandle_t gpsDataQueueHandler;
+
 TaskHandle_t webServerTaskHandler;
+TaskHandle_t getGPSDataTaskHandler;
 
 Encoder enc(PIN_CLK, PIN_DT, ENC_NO_BUTTON, TYPE2);
 
@@ -314,6 +317,33 @@ void drawEnableGeigerScreen() {
   drawMenu("[ enable geiger? ]");
 }
 
+void drawGpsScreen(TinyGPSPlus gps) {
+  drawHeader();
+
+  oled.setCursor(0, 19);
+  oled.setTextColor(GREEN, BLACK);
+  oled.setTextSize(1);
+
+  drawMenu("[ GPS ]");
+  if (gps.location.isValid()){
+    oled.println(gps.location.lat(), 6);
+    oled.println(gps.location.lng(), 6);
+  } else {
+    oled.println(F("NO LOCATION"));
+  }
+  if (gps.date.isValid()) {
+    oled.printf("%02d/%02d/%04d", gps.date.day(), gps.date.month(), gps.date.year());
+  } else {
+    oled.println(F("NO DATE"));
+  }
+  if (gps.time.isValid()) {
+    oled.printf("%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+  } else {
+    oled.println(F("NO TIME"));
+  }
+
+}
+
 void drawWifiScannerScreen() {
   drawHeader();
   
@@ -432,9 +462,11 @@ void onUiStateChanged() {
 */
 void ui(void * parameters) {
   Data meteoData;
+  TinyGPSPlus gps;
   uint8_t shit = 0;
   meteodataQueueHandler = xQueueCreate(1, sizeof meteoData);
   buttonClickQueueHandler = xQueueCreate(1, 1);
+  gpsDataQueueHandler = xQueueCreate(1, sizeof gps);
   vTaskDelay(500 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
@@ -450,6 +482,9 @@ void ui(void * parameters) {
           );      
         }   
       }
+    }
+    if (uxQueueMessagesWaiting(gpsDataQueueHandler) != 0) {
+      xQueueReceive(gpsDataQueueHandler, &gps, 0);
     }
     if (uxQueueMessagesWaiting(buttonClickQueueHandler) != 0) {
       if (xQueueReceive(buttonClickQueueHandler, &shit, 0) == pdPASS) {
@@ -524,6 +559,10 @@ void ui(void * parameters) {
 
       case UiState::GEIGER_ENABLE:
         drawEnableGeigerScreen();
+        break;
+
+      case UiState::GPS: 
+        drawGpsScreen(gps);
         break;
 
       default:
@@ -601,6 +640,23 @@ void webServer(void * parameter) {
   server.begin();
   for(;;){ 
     server.handleClient();
+  }
+}
+
+/**
+ * FreeRTOS task
+ * 
+ * gps data provider)
+*/
+void getGPSData(void * parameter) {
+  TinyGPSPlus gps;
+  for(;;) {
+    while (gpsSerial.available() > 0)
+    if (gps.encode(gpsSerial.read())) {
+      xQueueSend(gpsDataQueueHandler, &gps, 1);
+    }
+    
+    vTaskDelay(1000);
   }
 }
 
@@ -740,21 +796,30 @@ void IRAM_ATTR buttonOkIsr() {
   xQueueSend(buttonClickQueueHandler, &s, 0);
 
   switch (uiState.getCurrent()) {
-  case UiState::WIFI_ENABLE:
-    switch(uiState.getSelectedMenuItem()) {
+    case UiState::MENU: 
+      switch(uiState.getSelectedMenuItem()) {
+        case 6: // GPS
+          xTaskCreate(getGPSData, "getGPSData", 3000, NULL, 1, &getGPSDataTaskHandler);
+          break;
+        default:
+          break;
+      }
+      break;
+    case UiState::WIFI_ENABLE:
+      switch(uiState.getSelectedMenuItem()) {
 
-      case 1: 
-        static bool stat_true = true;
-        xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);
-        break;
+        case 1: 
+          static bool stat_true = true;
+          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_true, 5, NULL);
+          break;
 
-      case 2: 
-        static bool stat_false = false;
-        xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_false, 5, NULL);
-        break;
-      default:
-        break;
-    }
+        case 2: 
+          static bool stat_false = false;
+          xTaskCreate(wifiSwitch, "wifiSwitch", 3000, (void*)&stat_false, 5, NULL);
+          break;
+        default:
+          break;
+      }
       break;
     case UiState::CO2_ENABLE: {
       switch (uiState.getSelectedMenuItem()) {
@@ -824,6 +889,15 @@ void IRAM_ATTR buttonOkIsr() {
           break;
       }
       break;
+    }
+    case UiState::GPS: {
+      switch (uiState.getSelectedMenuItem()) {
+        case 0:
+          vTaskDelete(getGPSDataTaskHandler);
+          break;
+        default:
+          break;
+      }
     }
     default:
       break;

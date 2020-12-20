@@ -14,7 +14,7 @@ Adafruit_ST7735 oled = Adafruit_ST7735(PIN_CS, PIN_DC, RST_PIN);
 Adafruit_BME280 bme;
 SoftwareSerial gpsSerial(PIN_GPS_RX, PIN_GPS_TX);
 
-UiState uiState = UiState(); 
+UiState uiState = UiState();
 
 bool co2Enabled = false;
 bool geigerEnabled = false;
@@ -23,7 +23,7 @@ bool wifiEnabled = false;
 QueueHandle_t networkListQueueHandler;
 QueueHandle_t meteodataQueueHandler;
 QueueHandle_t buttonClickQueueHandler;
-QueueHandle_t gpsDataQueueHandler;
+QueueHandle_t locationDataQueueHandler;
 
 TaskHandle_t webServerTaskHandler;
 TaskHandle_t getGPSDataTaskHandler;
@@ -138,7 +138,7 @@ void drawHeader() {
   }
   
   oled.setTextColor(WHITE, BLACK);
-  oled.printf("RAM:%dKB               \n", (ESP.getFreeHeap() / 1024));
+  oled.printf("RAM:%dKB               \n", (ESP.getFreeHeap() / 1024));  
   if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
     oled.printf("ip: %s\n", WiFi.localIP().toString().c_str());
   } else {
@@ -312,7 +312,7 @@ void drawEnableGeigerScreen() {
   drawMenu("[ enable geiger? ]");
 }
 
-void drawGpsScreen(TinyGPSPlus gps) {
+void drawGpsScreen(LocationData locationData) {
   drawHeader();
 
   oled.setCursor(0, 19);
@@ -320,19 +320,19 @@ void drawGpsScreen(TinyGPSPlus gps) {
   oled.setTextSize(1);
 
   drawMenu("[ GPS ]");
-  if (gps.location.isValid()){
-    oled.println(gps.location.lat(), 6);
-    oled.println(gps.location.lng(), 6);
+  if (locationData.locationIsValid){
+    oled.println(locationData.lat, 6);
+    oled.println(locationData.lng, 6);
   } else {
     oled.println(F("NO LOCATION"));
   }
-  if (gps.date.isValid()) {
-    oled.printf("%02d/%02d/%04d\n", gps.date.day(), gps.date.month(), gps.date.year());
+  if (locationData.dateIsValid) {
+    oled.printf("%02d/%02d/%04d\n", locationData.day, locationData.month, locationData.year);
   } else {
     oled.println(F("NO DATE"));
   }
-  if (gps.time.isValid()) {
-    oled.printf("%02d:%02d:%02d\n", gps.time.hour(), gps.time.minute(), gps.time.second());
+  if (locationData.timeIsValid) {
+    oled.printf("%02d:%02d:%02d\n", locationData.hour, locationData.minute, locationData.second);
   } else {
     oled.println(F("NO TIME"));
   }
@@ -454,11 +454,11 @@ void onUiStateChanged() {
 */
 void ui(void * parameters) {
   Data meteoData;
-  TinyGPSPlus gps;
+  LocationData locationData;
   uint8_t shit = 0;
   meteodataQueueHandler = xQueueCreate(1, sizeof meteoData);
   buttonClickQueueHandler = xQueueCreate(1, 1);
-  gpsDataQueueHandler = xQueueCreate(1, sizeof gps);
+  locationDataQueueHandler = xQueueCreate(1, sizeof locationData);
   vTaskDelay(500 / portTICK_PERIOD_MS);
   oled.fillScreen(BLACK);
   oled.setCursor(0, 0);
@@ -475,8 +475,8 @@ void ui(void * parameters) {
         }   
       }
     }
-    if (uxQueueMessagesWaiting(gpsDataQueueHandler) != 0) {
-      xQueueReceive(gpsDataQueueHandler, &gps, 0);
+    if (uxQueueMessagesWaiting(locationDataQueueHandler) != 0) {
+      xQueueReceive(locationDataQueueHandler, &locationData, 0);
     }
     if (uxQueueMessagesWaiting(buttonClickQueueHandler) != 0) {
       if (xQueueReceive(buttonClickQueueHandler, &shit, 0) == pdPASS) {
@@ -552,7 +552,7 @@ void ui(void * parameters) {
         break;
 
       case UiState::GPS: 
-        drawGpsScreen(gps);
+        drawGpsScreen(locationData);
         break;
 
       default:
@@ -636,21 +636,44 @@ void webServer(void * parameter) {
 /**
  * FreeRTOS task
  * 
- * gps data provider)
+ * location data provider)
 */
 void getGPSData(void * parameter) {
+  HMC5883L compass;
   TinyGPSPlus gps;
+  LocationData locationData;
+  compass.begin();
   gpsSerial.begin(GPS_UART_BAUDRATE);
   gpsSerial.flush();
   for(;;) {
+    Vector norm = compass.readNormalize();
+    float heading = atan2(norm.YAxis, norm.XAxis);
+    if (heading < 0) {
+      heading += TWO_PI;
+    }
+
+    if (heading > TWO_PI) {
+      heading -= TWO_PI;
+    }
+    
     while (gpsSerial.available() > 0) {
       if (gps.encode(gpsSerial.read())) {
-        xQueueSend(gpsDataQueueHandler, &gps, 1);
-        Serial.println(gps.location.lat(), 6);
-        Serial.println(gps.location.lng(), 6);;
+        locationData.dateIsValid = gps.date.isValid();
+        locationData.day = gps.date.day();
+        locationData.month = gps.date.month();
+        locationData.year = gps.date.year();
+        locationData.timeIsValid = gps.time.isValid();
+        locationData.second = gps.time.second();
+        locationData.minute = gps.time.minute();
+        locationData.hour = gps.time.hour();
+        locationData.locationIsValid = gps.location.isValid();
+        locationData.lat = gps.location.lat();
+        locationData.lng = gps.location.lng();
+        locationData.heading = heading;
+        xQueueSend(locationDataQueueHandler, &locationData, 1);
       }
     }
-    vTaskDelay(1000);
+    vTaskDelay(1);
   }
 }
 

@@ -11,6 +11,7 @@
 #include <libraries/MovingAverage.h>
 #include <libraries/GyverEncoder.h>
 #include <libraries/btAudio.h>
+#include <HMC5883L.h>
 
 #include <EEPROM.h>
 #include <WiFi.h>
@@ -29,6 +30,7 @@
 #include <entities/MeteoData.h>
 #include <entities/UiState.h>
 #include <entities/WifiNetwork.h>
+#include <entities/LocationData.h>
 
 /**
  * Method signatures;
@@ -67,12 +69,11 @@ void drawMeteoSensorScren(Data meteoData);
 void drawAudioScreen(void);
 void drawBtAudioScreen(void);
 void drawSdCardAudioScreen(void);
-void drawGpsScreen(TinyGPSPlus gps);
+void drawGpsScreen(LocationData locationData);
 
 void onUiStateChanged(void);
 
 uint8_t convertRealValueToPx(int item, int measuringCounter);
 int getMeasurmentArraySize(int item);
-
 
 #endif

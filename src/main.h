@@ -51,7 +51,7 @@ void webServer(void * parameter);
 void scanWifi(void * parameter);
 void wifiSwitch(void * parameter);
 void audioPlayer(void * parameter);
-void getGPSData(void * parameter);
+void getLocationData(void * parameter);
 
 // ui methods
 void drawHeader(void);
@@ -69,11 +69,12 @@ void drawMeteoSensorScren(Data meteoData);
 void drawAudioScreen(void);
 void drawBtAudioScreen(void);
 void drawSdCardAudioScreen(void);
-void drawGpsScreen(LocationData locationData);
+void drawLocationScreen(LocationData locationData, float heading);
 
 void onUiStateChanged(void);
 
 uint8_t convertRealValueToPx(int item, int measuringCounter);
 int getMeasurmentArraySize(int item);
+
 
 #endif

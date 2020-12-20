@@ -8,6 +8,7 @@ struct Data {
   uint16_t preassure = 0; 
   uint8_t humidity = 0;
   uint16_t co2 = 0;
+  float heading = 0.0;
 };
 
 #endif

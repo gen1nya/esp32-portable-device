@@ -26,7 +26,7 @@ QueueHandle_t buttonClickQueueHandler;
 QueueHandle_t locationDataQueueHandler;
 
 TaskHandle_t webServerTaskHandler;
-TaskHandle_t getGPSDataTaskHandler;
+TaskHandle_t getLocationDataTaskHandler;
 
 Encoder enc(PIN_CLK, PIN_DT, ENC_NO_BUTTON, TYPE2);
 
@@ -312,7 +312,7 @@ void drawEnableGeigerScreen() {
   drawMenu("[ enable geiger? ]");
 }
 
-void drawGpsScreen(LocationData locationData) {
+void drawLocationScreen(LocationData locationData, float heading) {
   drawHeader();
 
   oled.setCursor(0, 19);
@@ -336,6 +336,11 @@ void drawGpsScreen(LocationData locationData) {
   } else {
     oled.println(F("NO TIME"));
   }
+  oled.fillCircle(20, 106, 19, BLACK);
+  oled.drawCircle(20, 106, 20, GREEN);
+  float x1= 20 + (15 * sin(heading));
+  float y1= 106 + (15 * cos(heading));
+  oled.drawLine(20, 106, x1, y1, GREEN);
 }
 
 void drawWifiScannerScreen() {
@@ -552,13 +557,13 @@ void ui(void * parameters) {
         break;
 
       case UiState::GPS: 
-        drawGpsScreen(locationData);
+        drawLocationScreen(locationData, meteoData.heading);
         break;
 
       default:
         break;
     }
-    vTaskDelay(32 / portTICK_PERIOD_MS);
+    vTaskDelay(20 / portTICK_PERIOD_MS);
   }
 }
 
@@ -638,24 +643,12 @@ void webServer(void * parameter) {
  * 
  * location data provider)
 */
-void getGPSData(void * parameter) {
-  HMC5883L compass;
+void getLocationData(void * parameter) {
   TinyGPSPlus gps;
   LocationData locationData;
-  compass.begin();
   gpsSerial.begin(GPS_UART_BAUDRATE);
   gpsSerial.flush();
   for(;;) {
-    Vector norm = compass.readNormalize();
-    float heading = atan2(norm.YAxis, norm.XAxis);
-    if (heading < 0) {
-      heading += TWO_PI;
-    }
-
-    if (heading > TWO_PI) {
-      heading -= TWO_PI;
-    }
-    
     while (gpsSerial.available() > 0) {
       if (gps.encode(gpsSerial.read())) {
         locationData.dateIsValid = gps.date.isValid();
@@ -669,11 +662,10 @@ void getGPSData(void * parameter) {
         locationData.locationIsValid = gps.location.isValid();
         locationData.lat = gps.location.lat();
         locationData.lng = gps.location.lng();
-        locationData.heading = heading;
         xQueueSend(locationDataQueueHandler, &locationData, 1);
       }
     }
-    vTaskDelay(1);
+    vTaskDelay(15);
   }
 }
 
@@ -684,6 +676,8 @@ void getGPSData(void * parameter) {
 */
 void getSensorsData(void * parameter) {
   ulong pollingCounter = 0;
+  HMC5883L compass;
+  compass.begin();
   if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
       oled.println("BME280 error :(");
   } else {
@@ -697,6 +691,13 @@ void getSensorsData(void * parameter) {
   mData.temperature = bme.readTemperature();
 
   for(;;){ 
+    Vector norm = compass.readNormalize();
+    float heading = atan2(norm.YAxis, norm.XAxis);
+    if (heading < 0) heading += TWO_PI;
+    if (heading > TWO_PI) heading -= TWO_PI;
+    
+    mData.heading = heading;
+
     if (wifiEnabled && (WiFi.status() == WL_CONNECTED)) {
       getLocalTime(&timeinfo);
     }
@@ -816,7 +817,7 @@ void IRAM_ATTR buttonOkIsr() {
     case UiState::MENU: 
       switch(uiState.getSelectedMenuItem()) {
         case 6: // GPS
-          xTaskCreate(getGPSData, "getGPSData", 3000, NULL, 1, &getGPSDataTaskHandler);
+          xTaskCreate(getLocationData, "getLocationData", 3000, NULL, 5, &getLocationDataTaskHandler);
           break;
         default:
           break;
@@ -909,7 +910,7 @@ void IRAM_ATTR buttonOkIsr() {
     case UiState::GPS: {
       switch (uiState.getSelectedMenuItem()) {
         case 0:
-          vTaskDelete(getGPSDataTaskHandler);
+          vTaskDelete(getLocationDataTaskHandler);
           break;
         default:
           break;

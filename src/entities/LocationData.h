@@ -17,8 +17,6 @@ struct LocationData {
     uint8_t month;
     uint16_t year;
     bool dateIsValid;
-
-    float heading;
 };
 
 #endif
